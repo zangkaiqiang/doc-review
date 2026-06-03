@@ -23,25 +23,30 @@ docs/      需求 / 交互 / 架构文档
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uv sync                          # 创建虚拟环境并安装依赖（含 Python 3.12）
+cp .env.example .env             # 可选：改端口/模型等配置（不改也能跑）
+uv run python -m app             # 从 .env 读取 host/port/reload 启动
 ```
 
-- 健康检查：http://localhost:8000/api/health
+- 健康检查：http://localhost:8000/api/health（默认端口；改了 `DOCREVIEW_PORT` 用对应端口）
 - 接口文档：http://localhost:8000/docs
+- **配置全走 `.env`**（前缀 `DOCREVIEW_`，见 `.env.example`）。端口冲突时设
+  `DOCREVIEW_PORT=8001` 即可，无需改命令。
 - **无需 LLM key 也能跑**：未配置 `DOCREVIEW_LLM_API_KEY` 时，流水线自动降级，
   仅用规则引擎产出意见（架构「失败降级到规则兜底」）。
-- 配置模型（OpenAI 兼容）：设置环境变量
-  `DOCREVIEW_LLM_BASE_URL` / `DOCREVIEW_LLM_API_KEY` / `DOCREVIEW_LLM_MODEL`。
+- 配置模型（OpenAI 兼容）：`DOCREVIEW_LLM_BASE_URL` / `DOCREVIEW_LLM_API_KEY` / `DOCREVIEW_LLM_MODEL`。
 
 ### 前端（React + Vite）
 
 ```bash
 cd frontend
 npm install
-npm run dev      # http://localhost:5173（已配置 /api 代理到 8000）
+cp .env.example .env             # 可选：后端端口若非 8000，改 VITE_BACKEND_PORT
+npm run dev                      # http://localhost:5173（/api 按 VITE_BACKEND_PORT 代理）
 ```
+
+> 后端若改了端口，记得让 `frontend/.env` 的 `VITE_BACKEND_PORT` 与 `backend/.env`
+> 的 `DOCREVIEW_PORT` 保持一致。
 
 ## MVP 已实现
 
@@ -67,8 +72,8 @@ npm run dev      # http://localhost:5173（已配置 /api 代理到 8000）
   ```bash
   export DOCREVIEW_CELERY_BROKER_URL=redis://localhost:6379/0
   export DOCREVIEW_CELERY_RESULT_BACKEND=redis://localhost:6379/0
-  celery -A app.celery_app.celery worker --loglevel=info   # 另起 worker
-  uvicorn app.main:app --port 8000
+  uv run celery -A app.celery_app.celery worker --loglevel=info   # 另起 worker
+  uv run python -m app                                             # 启动 API（端口走 .env）
   ```
 
 ## 待接入（Roadmap）

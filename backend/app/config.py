@@ -5,6 +5,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DOCREVIEW_", env_file=".env", extra="ignore")
 
+    # 开发服务器（`uv run python -m app` 读取，端口冲突时改 DOCREVIEW_PORT）
+    host: str = "127.0.0.1"
+    port: int = 8000
+    reload: bool = True
+
     # 数据库（MVP 用 SQLite，零部署成本）
     database_url: str = "sqlite:///./docreview.db"
 
