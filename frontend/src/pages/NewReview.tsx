@@ -116,6 +116,14 @@ export default function NewReview() {
                 const f = e.dataTransfer.files?.[0];
                 if (f) onFile(f);
               }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInput.current?.click();
+                }
+              }}
               className="flex cursor-pointer flex-col items-center gap-2 rounded-card border-2 border-dashed border-line bg-surface px-6 py-10 text-center hover:border-brand/40"
             >
               <input
@@ -123,7 +131,11 @@ export default function NewReview() {
                 type="file"
                 accept=".docx,.pdf"
                 className="hidden"
-                onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onFile(f);
+                  e.target.value = "";
+                }}
               />
               {uploading ? (
                 <Loader2 className="animate-spin text-brand" />
