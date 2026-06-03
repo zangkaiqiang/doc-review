@@ -19,3 +19,6 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Playwright 验证临时产物
+.playwright-mcp/
