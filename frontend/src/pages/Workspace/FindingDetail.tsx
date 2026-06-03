@@ -19,10 +19,10 @@ export function FindingDetail({ finding, onPatch }: { finding: Finding; onPatch:
           <Quote size={13} className="mt-0.5 shrink-0" /> {finding.quote}
         </blockquote>
       )}
-      <p className="mb-1.5 flex gap-1.5"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-mid" /><span><b className="text-ink2">问题：</b>{finding.problem}</span></p>
+      <p className="mb-1.5 flex gap-1.5"><AlertTriangle size={13} className="mt-0.5 shrink-0 text-mid-fg" /><span><b className="text-ink2">问题：</b>{finding.problem}</span></p>
       <p className="mb-1.5 flex gap-1.5"><BookOpen size={13} className="mt-0.5 shrink-0 text-muted" /><span><b className="text-ink2">依据：</b>{finding.basis}</span></p>
       <p className="mb-1.5 flex gap-1.5"><PenLine size={13} className="mt-0.5 shrink-0 text-brand" /><span><b className="text-ink2">建议：</b>{finding.suggestion}</span></p>
-      <p className={`mb-3 flex items-center gap-1.5 text-xs ${located ? "text-good" : "text-mid"}`}>
+      <p className={`mb-3 flex items-center gap-1.5 text-xs ${located ? "text-good" : "text-mid-fg"}`}>
         {located ? <MapPin size={13} /> : <MapPinOff size={13} />}
         {located ? "已定位原文" : "定位存疑（需人工确认）"}
       </p>

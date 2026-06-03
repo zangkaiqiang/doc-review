@@ -43,12 +43,12 @@ export default function Workspace() {
         case "stage":
           setStage(ev.stage);
           break;
-        case "finding":
-          setFindings((prev) => {
-            if (prev.length === 0) setSelected(ev.finding.id);
-            return [...prev, ev.finding];
-          });
+        case "finding": {
+          const f = ev.finding;
+          setFindings((prev) => [...prev, f]);
+          setSelected((prev) => (prev === null ? f.id : prev));
           break;
+        }
         case "done":
           setScore(ev.score);
           setLevel(ev.level);
@@ -79,9 +79,13 @@ export default function Workspace() {
 
   async function patch(status: Finding["status"]) {
     if (!current) return;
-    await updateFinding(current.id, { status });
-    setFindings((prev) => prev.map((x) => (x.id === current.id ? { ...x, status } : x)));
-    toast(status === "accepted" ? "已采纳" : "已驳回");
+    try {
+      await updateFinding(current.id, { status });
+      setFindings((prev) => prev.map((x) => (x.id === current.id ? { ...x, status } : x)));
+      toast(status === "accepted" ? "已采纳" : "已驳回");
+    } catch {
+      toast("操作失败，请重试", "error");
+    }
   }
 
   return (
