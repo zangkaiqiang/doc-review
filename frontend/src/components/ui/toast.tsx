@@ -24,8 +24,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((t) => (
           <Toast.Root
             key={t.id}
-            onOpenChange={(open) => !open && remove(t.id)}
-            className="rounded-control border border-line bg-surface px-4 py-3 text-sm shadow-pop data-[state=open]:animate-in"
+            onOpenChange={(open) => {
+              // 延迟卸载，让退出动画播放完整
+              if (!open) setTimeout(() => remove(t.id), 150);
+            }}
+            className="rounded-control border border-line bg-surface px-4 py-3 text-sm shadow-pop data-[state=open]:animate-toast-in data-[state=closed]:animate-toast-out"
           >
             <Toast.Title className={t.tone === "error" ? "text-high" : "text-ink"}>{t.title}</Toast.Title>
           </Toast.Root>
