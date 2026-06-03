@@ -2,9 +2,9 @@ import { ArrowLeft } from "lucide-react";
 import type { Level } from "../../types";
 import { Badge } from "../../components/ui/Badge";
 import { cn } from "../../lib/cn";
+import { STANCE_LABEL, LEVEL_LABEL } from "../../lib/labels";
 
 const STAGES = ["切分", "要素抽取", "规则校验", "LLM研判", "评分", "完成"];
-const LEVEL_LABEL: Record<Level, string> = { high: "高危", mid: "中危", low: "低危" };
 
 export function Dashboard(props: {
   docName: string;
@@ -27,7 +27,7 @@ export function Dashboard(props: {
         <ArrowLeft size={18} />
       </button>
       <span className="font-semibold text-ink">{props.docName || "审查中…"}</span>
-      {props.stance && <Badge tone="brand">{props.stance}</Badge>}
+      {props.stance && <Badge tone="brand">{STANCE_LABEL[props.stance] ?? props.stance}</Badge>}
 
       {props.running ? (
         <div className="flex items-center gap-1.5 text-xs">

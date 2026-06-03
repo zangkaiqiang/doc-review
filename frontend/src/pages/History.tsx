@@ -2,19 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Inbox } from "lucide-react";
 import { listReviews } from "../lib/api";
-import type { ReviewListItem, Level } from "../types";
+import type { ReviewListItem } from "../types";
 import { Badge, levelTone } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Skeleton } from "../components/ui/Skeleton";
 import { Button } from "../components/ui/Button";
-
-const STANCE_LABEL: Record<string, string> = {
-  party_a: "甲方", party_b: "乙方/投标", neutral: "中立", tenderee: "招标方",
-};
-const LEVEL_LABEL: Record<Level, string> = { high: "高危", mid: "中危", low: "低危" };
-const STATUS_LABEL: Record<string, string> = {
-  pending: "待执行", running: "审查中", done: "已完成", failed: "失败",
-};
+import { STANCE_LABEL, LEVEL_LABEL, STATUS_LABEL } from "../lib/labels";
 
 function when(iso: string): string {
   const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
