@@ -1,5 +1,8 @@
+import { RadioTower } from "lucide-react";
 import type { Finding } from "../../types";
+import { Badge } from "../../components/ui/Badge";
 import { SeverityDot } from "../../components/ui/SeverityDot";
+import { LEVEL_LABEL } from "../../lib/labels";
 import { cn } from "../../lib/cn";
 
 export function FindingsList(props: {
@@ -9,29 +12,46 @@ export function FindingsList(props: {
   onSelect: (id: number) => void;
 }) {
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-2 border-b border-line px-3.5 py-2.5 text-sm font-semibold text-ink">
-        审查意见 <span className="font-normal text-faint">{props.findings.length}</span>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-b border-line bg-panel px-3.5 py-3 text-sm font-semibold text-ink">
+        审查意见
+        <span className="font-normal text-faint">{props.findings.length}</span>
         {props.running && (
-          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-high">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-high" /> 实时
+          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-high-soft px-2 py-1 text-[11px] font-medium text-high">
+            <RadioTower size={12} /> 实时
           </span>
         )}
       </div>
-      <div className="overflow-auto">
-        {props.findings.length === 0 && <div className="px-3.5 py-3 text-xs text-faint">等待意见产出…</div>}
-        {props.findings.map((f) => (
+      <div className="min-h-0 flex-1 overflow-auto">
+        {props.findings.length === 0 && (
+          <div className="px-3.5 py-4 text-xs leading-5 text-faint">{props.running ? "等待意见产出" : "没有匹配意见"}</div>
+        )}
+        {props.findings.map((finding) => (
           <button
-            key={f.id}
-            onClick={() => props.onSelect(f.id)}
+            key={finding.id}
+            onClick={() => props.onSelect(finding.id)}
             className={cn(
-              "flex w-full items-center gap-2.5 border-l-2 px-3.5 py-2.5 text-left text-[13px] transition-colors",
-              f.id === props.selected ? "border-brand bg-brand-soft/50" : "border-transparent hover:bg-line/40"
+              "grid w-full gap-2 border-l-2 px-3.5 py-3 text-left transition-colors",
+              finding.id === props.selected ? "border-brand bg-brand-soft/55" : "border-transparent hover:bg-line/40"
             )}
           >
-            <SeverityDot level={f.level} />
-            <span className={cn("flex-1 truncate", f.status !== "open" ? "text-faint line-through" : "text-ink2")}>{f.title}</span>
-            {f.status !== "open" && <span className="text-[11px] text-faint">{f.status === "accepted" ? "已采纳" : "已驳回"}</span>}
+            <span className="flex min-w-0 items-start gap-2.5">
+              <SeverityDot level={finding.level} className="mt-1.5" />
+              <span className="min-w-0 flex-1">
+                <span className={cn("block truncate text-[13px] font-medium", finding.status !== "open" ? "text-faint line-through" : "text-ink2")}>
+                  {finding.title}
+                </span>
+                <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <Badge tone={finding.level} className="px-2 py-0.5 text-[11px]">{LEVEL_LABEL[finding.level]}</Badge>
+                  <Badge tone="neutral" className="px-2 py-0.5 text-[11px]">{finding.source === "rule" ? "规则" : "模型"}</Badge>
+                  {finding.status !== "open" && (
+                    <Badge tone={finding.status === "accepted" ? "good" : "high"} className="px-2 py-0.5 text-[11px]">
+                      {finding.status === "accepted" ? "已采纳" : "已驳回"}
+                    </Badge>
+                  )}
+                </span>
+              </span>
+            </span>
           </button>
         ))}
       </div>

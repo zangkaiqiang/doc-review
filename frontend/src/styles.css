@@ -4,7 +4,9 @@
   /* 表面与边框 */
   --color-bg: #f7f8fa;
   --color-surface: #ffffff;
+  --color-panel: #fbfcfe;
   --color-line: #eef0f4;
+  --color-line-strong: #d9dee8;
 
   /* 品牌主色 */
   --color-brand: #6366f1;
@@ -22,6 +24,8 @@
   /* 正向 / 文本层级 */
   --color-good: #12b76a;
   --color-good-soft: #ecfdf3;
+  --color-info: #0ba5ec;
+  --color-info-soft: #f0f9ff;
   --color-ink: #11151c;
   --color-ink2: #344054;
   --color-muted: #667085;
@@ -49,10 +53,37 @@
 
 @layer base {
   html, body, #root { height: 100%; }
+  * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--color-bg);
     color: var(--color-ink);
     font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    text-rendering: optimizeLegibility;
+  }
+  button, input, textarea, select {
+    font: inherit;
+  }
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid rgb(99 102 241 / 0.45);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: rgb(99 102 241 / 0.18);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d9dee8;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
   }
 }

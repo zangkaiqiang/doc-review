@@ -1,9 +1,13 @@
 """应用配置。模型走 OpenAI 兼容接口，全部可通过环境变量覆盖。"""
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DOCREVIEW_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="DOCREVIEW_", env_file=str(_ENV_FILE), extra="ignore")
 
     # 开发服务器（`uv run python -m app` 读取，端口冲突时改 DOCREVIEW_PORT）
     host: str = "127.0.0.1"
@@ -21,7 +25,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 1024
+    llm_max_tokens: int = 4096
     llm_timeout: int = 60
 
     # 异步执行后端：留空=进程内线程(默认,零依赖)；设置=Celery+Redis 跨进程
@@ -30,7 +34,7 @@ class Settings(BaseSettings):
     # 流式产出时每条意见之间的间隔(秒)，仅为让前端流式效果可见
     stream_delay: float = 0.05
 
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5174"
 
 
 settings = Settings()

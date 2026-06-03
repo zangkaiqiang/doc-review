@@ -1,7 +1,7 @@
 """知识库接口：红线库 CRUD 与批量导入（落实存量条款导入）。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -33,6 +33,29 @@ def add_redline(body: RedlineIn, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(r)
     return r
+
+
+@router.put("/redlines/{redline_id}")
+def update_redline(redline_id: int, body: RedlineIn, session: Session = Depends(get_session)):
+    r = session.get(Redline, redline_id)
+    if not r:
+        raise HTTPException(404, "红线不存在")
+    for k, v in body.model_dump().items():
+        setattr(r, k, v)
+    session.add(r)
+    session.commit()
+    session.refresh(r)
+    return r
+
+
+@router.delete("/redlines/{redline_id}")
+def delete_redline(redline_id: int, session: Session = Depends(get_session)):
+    r = session.get(Redline, redline_id)
+    if not r:
+        raise HTTPException(404, "红线不存在")
+    session.delete(r)
+    session.commit()
+    return {"ok": True}
 
 
 @router.post("/redlines/import")

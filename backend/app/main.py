@@ -31,4 +31,9 @@ def on_startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "llm_configured": bool(settings.llm_api_key)}
+    return {
+        "status": "ok",
+        "llm_configured": bool(settings.llm_api_key),
+        "llm_base_url": settings.llm_base_url,
+        "llm_model": settings.llm_model,
+    }

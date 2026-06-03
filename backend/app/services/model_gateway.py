@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Optional
 
 from ..config import settings
@@ -53,6 +54,61 @@ class ModelGateway:
         except Exception:
             # 失败降级：返回 None，流水线只保留规则类意见
             return None
+
+    def chat_text(self, system: str, user: str) -> Optional[str]:
+        """请求普通文本输出。失败返回 None，由调用方决定兜底策略。"""
+        if not self.available:
+            return None
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(base_url=self._cfg["base_url"], api_key=self._cfg["api_key"],
+                            timeout=self._cfg["timeout"])
+            resp = client.chat.completions.create(
+                model=self._cfg["model"],
+                temperature=self._cfg["temperature"],
+                max_tokens=self._cfg["max_tokens"],
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            return resp.choices[0].message.content or ""
+        except Exception:
+            return None
+
+    def stream_text(self, system: str, user: str) -> Optional[Iterator[str]]:
+        """请求流式文本输出。失败时产生空迭代，由调用方做兜底。"""
+        if not self.available:
+            return None
+
+        def gen() -> Iterator[str]:
+            try:
+                from openai import OpenAI
+
+                client = OpenAI(base_url=self._cfg["base_url"], api_key=self._cfg["api_key"],
+                                timeout=self._cfg["timeout"])
+                stream = client.chat.completions.create(
+                    model=self._cfg["model"],
+                    temperature=self._cfg["temperature"],
+                    max_tokens=self._cfg["max_tokens"],
+                    stream=True,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                )
+                for item in stream:
+                    if not item.choices:
+                        continue
+                    delta = item.choices[0].delta
+                    content = getattr(delta, "content", None) or ""
+                    if content:
+                        yield content
+            except Exception:
+                return
+
+        return gen()
 
 
 gateway = ModelGateway()
