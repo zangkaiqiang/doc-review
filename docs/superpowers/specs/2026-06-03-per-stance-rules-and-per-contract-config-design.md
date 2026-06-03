@@ -27,11 +27,11 @@
 
 ## 3. 决策（方案，已拍板）
 
-1. **数据模型走低风险加列**：保留已跑通的 `ReviewTask.rule_config`（规则快照），**新增** `scoring_config`（评分快照）。不改名、不搬数据，避免迁移风险。
+1. **数据模型走低风险加列**：保留已跑通的 `ReviewTask.rule_config`（规则快照），**新增** `scoring_config`（评分快照）与 `redline_snapshot`（本次适用红线冻结副本）。不改名、不搬数据，避免迁移风险。
 2. **评分按立场分默认**：`scoring_engine.STANCE_SCORING_DEFAULTS` + `default_scoring_for_stance` + `normalize_scoring` + `resolve_scoring_for_stance`。`score()` 签名不变（仍吃已解析的 scoring dict），立场解析在 API/pipeline 边界完成。
 3. **立场预设升级为法务版**（见 §4），替换偏弱的 `DEFAULT_RULE_TEMPLATES`，并定义 `STANCE_SCORING_DEFAULTS`。
 4. **接口**：新增 `GET/PUT /api/settings/scoring/{stance}`；`GET /api/settings/scoring` 返回按立场 dict（与 `/rules` 对齐）；旧单份 scoring 数据读时补默认键并广播为四立场。具体路由声明在通配 `/{key}` 之前，防吞路由。
-5. **快照与执行**：`create_review` 解析 stance 评分默认 ∪ 用户覆盖 → 写 `scoring_config`；`execute_review` 评分用 `task.scoring_config`（空则回落 stance 默认），不再实时读全局 scoring。
+5. **快照与执行**：`create_review` 解析 stance 评分默认 ∪ 用户覆盖 → 写 `scoring_config`，并按 stance+doc_type 过滤+冻结适用红线 → 写 `redline_snapshot`；`execute_review` 评分用 `task.scoring_config`、红线用 `task.redline_snapshot`（均空则回落，兼容旧任务），不再实时读全局 scoring / 红线库。改全局默认/红线库不影响已建任务结论。
 6. **前端**：配置页评分区加立场 Tab（复用规则 Tab 模式，按 stance PUT）；新建审查页"本次规则"面板加评分编辑，提交带 `scoring_config`。
 7. **合并语义**：存"按立场完整 dict"（与既有 `/rules` 一致），字段缺失回落该立场预设；列表显式 `[]` = 用户清空。
 
@@ -68,7 +68,6 @@
 
 ## 7. 本轮范围外（记为后续）
 
-- 红线"每合同勾选子集"（红线已按立场过滤且可在配置页增删；per-contract 勾选属增强）。
-- 工作台/历史"本次所用规则/评分"只读展示（贯通 get_review→Workspace，面较大）。
-- 红线内容冻结副本快照（当前 done 任务靠回放已存 findings 保证展示可复现）。
+- 红线"每合同勾选子集"UI（红线已按立场过滤+冻结快照；per-contract 人工勾选属增强）。
+- 工作台/历史"本次所用规则/评分/红线"只读展示（贯通 get_review→Workspace，面较大）。
 - 引入 Alembic 正式迁移（当前沿用 SQLite 轻量 ALTER）。

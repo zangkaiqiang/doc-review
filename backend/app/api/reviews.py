@@ -6,12 +6,14 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
 from ..db import get_session
 from ..events import bus
-from ..models import Document, ReviewTask, Finding
+from ..models import Document, ReviewTask, Finding, Redline, Setting
+from ..services import rules_engine, scoring_engine
+from ..services.model_gateway import gateway
 from ..runner import start_review
 
 router = APIRouter(prefix="/api", tags=["reviews"])
@@ -31,6 +33,19 @@ class ReviewCreate(BaseModel):
     name: str = "未命名文档"
     doc_type: str = "contract"
     stance: str = "party_a"
+    rule_config: dict | None = None
+    scoring_config: dict | None = None
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ReviewChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list)
+    finding_id: int | None = None
 
 
 def _sse(event: dict) -> str:
@@ -77,7 +92,31 @@ def create_review(body: ReviewCreate, session: Session = Depends(get_session)):
     else:
         raise HTTPException(400, "需提供 doc_id 或 text")
 
-    task = ReviewTask(doc_id=doc.id, stance=body.stance, status="pending")
+    setting = session.get(Setting, "rules")
+    rule_config = (
+        rules_engine.normalize_rules(body.rule_config, body.stance)
+        if body.rule_config is not None
+        else rules_engine.resolve_rules_for_stance(body.stance, setting.value if setting else None)
+    )
+    scoring_setting = session.get(Setting, "scoring")
+    scoring_config = (
+        scoring_engine.normalize_scoring(body.scoring_config, body.stance)
+        if body.scoring_config is not None
+        else scoring_engine.resolve_scoring_for_stance(
+            body.stance, scoring_setting.value if scoring_setting else None
+        )
+    )
+    # 冻结本次适用红线（按立场+文档类型过滤）为内容副本，使结论不受后续红线库改动影响。
+    redline_rows = session.exec(select(Redline).where(Redline.enabled == True)).all()  # noqa: E712
+    redline_snapshot = [
+        r.model_dump() for r in redline_rows
+        if r.stance in ("", "any", body.stance) and r.doc_type in ("", "any", doc.doc_type)
+    ]
+    task = ReviewTask(
+        doc_id=doc.id, stance=body.stance, status="pending",
+        rule_config=rule_config, scoring_config=scoring_config,
+        redline_snapshot=redline_snapshot,
+    )
     session.add(task)
     session.commit()
     session.refresh(task)
@@ -138,6 +177,66 @@ def get_review(task_id: int, session: Session = Depends(get_session)):
             "findings": findings}
 
 
+@router.post("/reviews/{task_id}/chat")
+def chat_review(task_id: int, body: ReviewChatRequest, session: Session = Depends(get_session)):
+    """基于当前审查任务继续对话。模型不可用时返回规则兜底答复。"""
+    task = session.get(ReviewTask, task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    doc = session.get(Document, task.doc_id)
+    findings = session.exec(select(Finding).where(Finding.task_id == task_id)).all()
+    selected = session.get(Finding, body.finding_id) if body.finding_id else None
+    if selected and selected.task_id != task_id:
+        selected = None
+
+    system = (
+        "你是文档审查对话 Agent。只基于给定文档、审查意见和配置结果回答，"
+        "不要编造未提供的事实。回答要面向法务/采购用户，直接、可执行。"
+    )
+    user = _chat_context(task, doc, findings, selected, body)
+    reply = gateway.chat_text(system, user)
+    if reply:
+        return {"reply": reply, "model_available": True}
+
+    return {"reply": _fallback_chat(body.message, findings, selected), "model_available": False}
+
+
+@router.post("/reviews/{task_id}/chat/stream")
+def stream_chat_review(task_id: int, body: ReviewChatRequest, session: Session = Depends(get_session)):
+    """流式对话：SSE 推送 delta，便于前端边生成边渲染。"""
+    task = session.get(ReviewTask, task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    doc = session.get(Document, task.doc_id)
+    findings = session.exec(select(Finding).where(Finding.task_id == task_id)).all()
+    selected = session.get(Finding, body.finding_id) if body.finding_id else None
+    if selected and selected.task_id != task_id:
+        selected = None
+
+    system = (
+        "你是文档审查对话 Agent。只基于给定文档、审查意见和配置结果回答，"
+        "不要编造未提供的事实。回答要面向法务/采购用户，直接、可执行。"
+        "可以使用 Markdown 组织答案，例如项目符号、表格和代码块。"
+    )
+    user = _chat_context(task, doc, findings, selected, body)
+    fallback = _fallback_chat(body.message, findings, selected)
+
+    def gen():
+        stream = gateway.stream_text(system, user)
+        emitted = False
+        if stream:
+            for chunk in stream:
+                emitted = True
+                yield _sse({"type": "delta", "delta": chunk, "model_available": True})
+        if not emitted:
+            yield _sse({"type": "delta", "delta": fallback, "model_available": False})
+            yield _sse({"type": "done", "model_available": False})
+        else:
+            yield _sse({"type": "done", "model_available": True})
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
 class FindingUpdate(BaseModel):
     status: str | None = None
     reject_reason: str | None = None
@@ -158,3 +257,56 @@ def update_finding(finding_id: int, body: FindingUpdate, session: Session = Depe
     session.add(f)
     session.commit()
     return {"ok": True}
+
+
+def _chat_context(task: ReviewTask, doc: Document, findings: list[Finding], selected: Finding | None, body: ReviewChatRequest) -> str:
+    findings_text = "\n".join(
+        f"- #{f.id} [{f.level}/{f.category}] {f.title}；问题：{f.problem}；建议：{f.suggestion}"
+        for f in findings[:30]
+    )
+    selected_text = ""
+    if selected:
+        selected_text = (
+            f"\n当前选中意见：#{selected.id} [{selected.level}/{selected.category}] {selected.title}\n"
+            f"引用：{selected.quote}\n问题：{selected.problem}\n依据：{selected.basis}\n建议：{selected.suggestion}\n"
+        )
+    history = "\n".join(f"{m.role}: {m.content}" for m in body.history[-8:])
+    doc_text = doc.text[:8000]
+    return (
+        f"任务：#{task.id}，立场：{task.stance}，状态：{task.status}，评分：{task.score}，等级：{task.level}\n"
+        f"文档名：{doc.name}\n文档摘录：\n{doc_text}\n\n"
+        f"审查意见：\n{findings_text or '暂无意见'}\n"
+        f"{selected_text}\n"
+        f"最近对话：\n{history or '无'}\n\n"
+        f"用户问题：{body.message}"
+    )
+
+
+def _fallback_chat(message: str, findings: list[Finding], selected: Finding | None) -> str:
+    if selected:
+        return (
+            f"当前选中意见是「{selected.title}」。\n\n"
+            f"问题：{selected.problem or '未提供'}\n"
+            f"依据：{selected.basis or '未提供'}\n"
+            f"建议：{selected.suggestion or '未提供'}\n\n"
+            "当前未配置可用模型，因此只能基于已生成的审查意见做摘要式回答。"
+        )
+
+    high = [f for f in findings if f.level == "high"]
+    if "高危" in message or "风险" in message:
+        if not high:
+            return "当前未检出高危意见。模型未配置时，我只能基于规则审查结果回答。"
+        lines = "\n".join(f"- {f.title}：{f.problem}" for f in high[:5])
+        return f"当前高危关注点：\n{lines}\n\n模型未配置时，我只能基于已生成意见回答。"
+
+    if "修改" in message or "建议" in message:
+        open_items = [f for f in findings if f.status == "open"]
+        if not open_items:
+            return "当前没有待处理意见。模型未配置时，我只能基于已生成意见回答。"
+        lines = "\n".join(f"- {f.title}：{f.suggestion}" for f in open_items[:5])
+        return f"可优先处理这些修改建议：\n{lines}\n\n模型未配置时，我只能基于已生成意见回答。"
+
+    return (
+        "我可以基于当前审查意见继续解释风险、整理修改建议或指出高危项。"
+        "当前未配置可用模型，因此回答范围限于已生成的规则/模型审查意见。"
+    )

@@ -1,17 +1,22 @@
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as Tabs from "@radix-ui/react-tabs";
-import { UploadCloud, FileText, Loader2 } from "lucide-react";
-import { uploadDocument, createReview } from "../lib/api";
-import { useToast } from "../components/ui/toast";
-import { Button } from "../components/ui/Button";
+import { ArrowRight, CheckCircle2, ClipboardList, FileText, Loader2, UploadCloud } from "lucide-react";
+import { createReview, getRulesConfigForStance, getScoringConfigForStance, uploadDocument } from "../lib/api";
+import { STANCE_LABEL } from "../lib/labels";
 import { cn } from "../lib/cn";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { useToast } from "../components/ui/toast";
+import { RuleTemplateEditor, normalizeRuleConfig } from "../components/RuleTemplateEditor";
+import { ScoringEditor, normalizeScoringConfig } from "../components/ScoringEditor";
+import type { RuleConfig, ScoringConfig } from "../types";
 
 const STANCES = [
-  { key: "party_a", label: "甲方审合同", hint: "站在采购/甲方，挑对己方不利条款" },
-  { key: "party_b", label: "乙方 / 投标", hint: "站在供方/投标方，关注义务与风险" },
-  { key: "neutral", label: "中立把关", hint: "不偏不倚，整体合规体检" },
-  { key: "tenderee", label: "招标方审标", hint: "审投标响应是否满足要求" },
+  { key: "party_a", label: "甲方审合同", hint: "采购方风险" },
+  { key: "party_b", label: "乙方 / 投标", hint: "履约义务" },
+  { key: "neutral", label: "中立把关", hint: "合规体检" },
+  { key: "tenderee", label: "招标方审标", hint: "响应偏差" },
 ];
 
 const SAMPLE = `采购合同
@@ -27,20 +32,66 @@ export default function NewReview() {
   const { toast } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [stance, setStance] = useState("party_a");
   const [text, setText] = useState(SAMPLE);
   const [docId, setDocId] = useState<number | null>(null);
-  const [docName, setDocName] = useState<string>("");
+  const [docInfo, setDocInfo] = useState<{ name: string; chars: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [ruleConfig, setRuleConfig] = useState<RuleConfig | null>(null);
+  const [scoringConfig, setScoringConfig] = useState<ScoringConfig | null>(null);
+  const [rulesLoading, setRulesLoading] = useState(false);
+
+  const textChars = text.trim().length;
+  const canStart = useMemo(
+    () =>
+      (mode === "upload" ? Boolean(docId) : textChars > 0) &&
+      Boolean(ruleConfig) &&
+      Boolean(scoringConfig) &&
+      !rulesLoading,
+    [docId, mode, ruleConfig, scoringConfig, rulesLoading, textChars]
+  );
+
+  useEffect(() => {
+    let alive = true;
+    setRulesLoading(true);
+    Promise.all([getRulesConfigForStance(stance), getScoringConfigForStance(stance)])
+      .then(([rules, scoring]) => {
+        if (alive) {
+          setRuleConfig(rules);
+          setScoringConfig(scoring);
+        }
+      })
+      .catch((e) => {
+        if (alive) {
+          setRuleConfig(null);
+          setScoringConfig(null);
+          toast(String(e instanceof Error ? e.message : e), "error");
+        }
+      })
+      .finally(() => {
+        if (alive) setRulesLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [stance]);
 
   async function onFile(file: File) {
+    if (!/\.(docx|pdf)$/i.test(file.name)) {
+      toast("仅支持 .docx / .pdf", "error");
+      return;
+    }
     setUploading(true);
     setDocId(null);
+    setDocInfo(null);
     try {
       const { id, name, chars } = await uploadDocument(file);
       setDocId(id);
-      setDocName(`${name}（${chars} 字）`);
+      setDocInfo({ name, chars });
+      setMode("upload");
     } catch (e) {
       toast(String(e instanceof Error ? e.message : e), "error");
     } finally {
@@ -48,13 +99,19 @@ export default function NewReview() {
     }
   }
 
-  async function start(mode: "file" | "text") {
+  async function start() {
+    if (!canStart) return;
     setSubmitting(true);
     try {
+      const config = {
+        stance,
+        rule_config: normalizeRuleConfig(ruleConfig!),
+        scoring_config: normalizeScoringConfig(scoringConfig!),
+      };
       const body =
-        mode === "file"
-          ? { doc_id: docId!, stance }
-          : { text, name: "粘贴文本审查", stance };
+        mode === "upload"
+          ? { doc_id: docId!, ...config }
+          : { text: text.trim(), name: "粘贴文本审查", ...config };
       const { task_id } = await createReview(body);
       nav(`/review/${task_id}`);
     } catch (e) {
@@ -65,106 +122,202 @@ export default function NewReview() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-xl font-semibold text-ink">新建审查</h1>
-      <p className="mt-1 text-sm text-muted">上传合同文件或粘贴文本，选择审查立场后开始。</p>
-
-      {/* 立场 */}
-      <div className="mt-7">
-        <div className="mb-2 text-sm font-medium text-ink2">审查立场</div>
-        <div className="grid grid-cols-2 gap-2.5">
-          {STANCES.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setStance(s.key)}
-              className={cn(
-                "rounded-card border p-3 text-left transition-colors",
-                stance === s.key ? "border-brand bg-brand-soft" : "border-line bg-surface hover:border-brand/40"
-              )}
-            >
-              <div className={cn("text-sm font-medium", stance === s.key ? "text-brand" : "text-ink")}>{s.label}</div>
-              <div className="mt-0.5 text-xs text-muted">{s.hint}</div>
-            </button>
-          ))}
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Badge tone="brand">新任务</Badge>
+            <Badge tone="neutral">流式审查</Badge>
+          </div>
+          <h1 className="text-2xl font-semibold text-ink">新建审查</h1>
         </div>
+        <Button disabled={!canStart || submitting || uploading} onClick={start} size="lg">
+          {submitting ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+          {submitting ? "提交中" : "开始审查"}
+        </Button>
       </div>
 
-      {/* 上传 / 粘贴 */}
-      <div className="mt-7">
-        <Tabs.Root defaultValue="upload">
-          <Tabs.List className="mb-3 flex gap-1 border-b border-line">
-            {[
-              { v: "upload", t: "上传文件" },
-              { v: "paste", t: "粘贴文本" },
-            ].map((x) => (
-              <Tabs.Trigger
-                key={x.v}
-                value={x.v}
-                className="px-3 py-2 text-sm text-muted data-[state=active]:border-b-2 data-[state=active]:border-brand data-[state=active]:font-medium data-[state=active]:text-brand"
-              >
-                {x.t}
-              </Tabs.Trigger>
-            ))}
-          </Tabs.List>
-
-          <Tabs.Content value="upload">
-            <div
-              onClick={() => fileInput.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f) onFile(f);
-              }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  fileInput.current?.click();
-                }
-              }}
-              className="flex cursor-pointer flex-col items-center gap-2 rounded-card border-2 border-dashed border-line bg-surface px-6 py-10 text-center hover:border-brand/40"
-            >
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".docx,.pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onFile(f);
-                  e.target.value = "";
-                }}
-              />
-              {uploading ? (
-                <Loader2 className="animate-spin text-brand" />
-              ) : docId ? (
-                <FileText className="text-good" />
-              ) : (
-                <UploadCloud className="text-faint" />
-              )}
-              <div className="text-sm text-ink2">
-                {uploading ? "解析中…" : docId ? docName : "拖入或点击选择 .docx / .pdf"}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
+          <Tabs.Root value={mode} onValueChange={(value) => setMode(value as "upload" | "paste")}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
+              <Tabs.List className="flex rounded-control border border-line bg-surface p-1">
+                {[
+                  { value: "upload", label: "上传文件", icon: UploadCloud },
+                  { value: "paste", label: "粘贴文本", icon: ClipboardList },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <Tabs.Trigger
+                      key={tab.value}
+                      value={tab.value}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm text-muted transition-colors data-[state=active]:bg-brand data-[state=active]:text-white"
+                    >
+                      <Icon size={15} />
+                      {tab.label}
+                    </Tabs.Trigger>
+                  );
+                })}
+              </Tabs.List>
+              <div className="text-xs tabular-nums text-muted">
+                {mode === "upload" ? (docInfo ? `${docInfo.chars.toLocaleString()} 字` : "等待文件") : `${textChars.toLocaleString()} 字`}
               </div>
             </div>
-            <Button className="mt-4" disabled={!docId || submitting || uploading} onClick={() => start("file")}>
-              {submitting ? "提交中…" : "开始审查"}
-            </Button>
-          </Tabs.Content>
 
-          <Tabs.Content value="paste">
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={14}
-              className="w-full rounded-card border border-line bg-surface p-3 font-mono text-[13px] outline-none focus:border-brand/50"
-            />
-            <Button className="mt-4" disabled={!text.trim() || submitting} onClick={() => start("text")}>
-              {submitting ? "提交中…" : "开始审查"}
+            <Tabs.Content value="upload" className="p-5">
+              <div
+                onClick={() => fileInput.current?.click()}
+                onDragEnter={() => setDragging(true)}
+                onDragLeave={() => setDragging(false)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) onFile(file);
+                }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    fileInput.current?.click();
+                  }
+                }}
+                className={cn(
+                  "flex min-h-80 cursor-pointer flex-col items-center justify-center gap-3 rounded-card border border-dashed px-6 py-12 text-center transition-colors",
+                  dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-panel hover:border-brand/50 hover:bg-brand-soft/30"
+                )}
+              >
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".docx,.pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onFile(file);
+                    e.target.value = "";
+                  }}
+                />
+                {uploading ? (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-brand-soft text-brand">
+                    <Loader2 className="animate-spin" size={24} />
+                  </span>
+                ) : docId ? (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-good-soft text-good">
+                    <FileText size={24} />
+                  </span>
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-surface text-faint shadow-soft">
+                    <UploadCloud size={24} />
+                  </span>
+                )}
+                <div>
+                  <div className="text-sm font-medium text-ink">
+                    {uploading ? "解析中" : docInfo ? docInfo.name : "选择 .docx / .pdf"}
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    {docInfo ? `${docInfo.chars.toLocaleString()} 字已解析` : "拖拽到此处，或点击选择文件"}
+                  </div>
+                </div>
+              </div>
+            </Tabs.Content>
+
+            <Tabs.Content value="paste" className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-sm font-medium text-ink2">文档文本</div>
+                <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
+                  填入示例
+                </Button>
+              </div>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={18}
+                className="min-h-80 w-full resize-y rounded-card border border-line bg-panel p-4 font-mono text-[13px] leading-7 text-ink2 outline-none transition-colors focus:border-brand/50 focus:bg-surface"
+              />
+            </Tabs.Content>
+          </Tabs.Root>
+        </section>
+
+        <aside className="space-y-4">
+          <section className="rounded-card border border-line bg-surface p-4 shadow-soft">
+            <div className="mb-3 text-sm font-semibold text-ink">审查立场</div>
+            <div className="grid gap-2">
+              {STANCES.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setStance(item.key)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-control border px-3 py-2.5 text-left transition-colors",
+                    stance === item.key ? "border-brand bg-brand-soft" : "border-line bg-panel hover:border-brand/40 hover:bg-surface"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                      stance === item.key ? "border-brand bg-brand text-white" : "border-line-strong bg-surface text-transparent"
+                    )}
+                  >
+                    <CheckCircle2 size={13} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className={cn("block text-sm font-medium", stance === item.key ? "text-brand" : "text-ink2")}>{item.label}</span>
+                    <span className="block text-xs text-muted">{item.hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-card border border-line bg-surface p-4 shadow-soft">
+            <div className="mb-3 text-sm font-semibold text-ink">当前输入</div>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted">来源</span>
+                <span className="text-right font-medium text-ink2">{mode === "upload" ? "文件" : "文本"}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted">内容</span>
+                <span className="max-w-44 truncate text-right font-medium text-ink2">
+                  {mode === "upload" ? docInfo?.name ?? "未选择" : `${textChars.toLocaleString()} 字`}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted">立场</span>
+                <span className="text-right font-medium text-ink2">{STANCE_LABEL[stance] ?? stance}</span>
+              </div>
+            </div>
+            <Button className="mt-4 w-full" disabled={!canStart || submitting || uploading} onClick={start} size="lg">
+              {submitting ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+              {submitting ? "提交中" : "开始审查"}
             </Button>
-          </Tabs.Content>
-        </Tabs.Root>
+          </section>
+
+          <section className="rounded-card border border-line bg-surface shadow-soft">
+            <div className="flex items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-ink">本次审查规则</div>
+                <div className="mt-1 text-xs text-muted">{STANCE_LABEL[stance] ?? stance}默认模板，可在提交前覆盖。</div>
+              </div>
+              {rulesLoading ? <Loader2 size={16} className="shrink-0 animate-spin text-muted" /> : <Badge tone="neutral">任务快照</Badge>}
+            </div>
+            <div className="max-h-[640px] space-y-4 overflow-y-auto p-4">
+              {ruleConfig ? (
+                <RuleTemplateEditor value={ruleConfig} onChange={setRuleConfig} compact />
+              ) : (
+                <div className="rounded-control border border-line bg-panel p-4 text-sm text-muted">规则模板加载中</div>
+              )}
+              {scoringConfig ? (
+                <div className="border-t border-line pt-4">
+                  <div className="mb-3 text-sm font-medium text-ink2">评分口径</div>
+                  <ScoringEditor value={scoringConfig} onChange={setScoringConfig} compact />
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   );

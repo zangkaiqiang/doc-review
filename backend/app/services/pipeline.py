@@ -38,9 +38,24 @@ def execute_review(task_id: int, publish: Publish) -> None:
             publish({"type": "start", "stance": task.stance,
                      "document": {"id": doc.id, "name": doc.name, "text": doc.text}})
 
-            redlines = [r.model_dump() for r in
-                        session.exec(select(Redline).where(Redline.enabled == True)).all()]
-            scoring_cfg = _get_setting(session, "scoring")
+            # 优先用任务创建时冻结的红线快照；空则回落实时过滤（兼容迁移前旧任务）。
+            if task.redline_snapshot:
+                redlines = task.redline_snapshot
+            else:
+                redline_rows = session.exec(select(Redline).where(Redline.enabled == True)).all()
+                redlines = [r.model_dump() for r in redline_rows if _redline_applies(r, task, doc)]
+            rules_setting = _get_setting(session, "rules")
+            rules_cfg = (
+                rules_engine.normalize_rules(task.rule_config, task.stance)
+                if task.rule_config
+                else rules_engine.resolve_rules_for_stance(task.stance, rules_setting)
+            )
+            # 空 dict 视为"无快照"（兼容迁移前旧任务）：回落到该立场默认 ∪ 全局覆盖。
+            scoring_cfg = (
+                task.scoring_config
+                if task.scoring_config
+                else scoring_engine.resolve_scoring_for_stance(task.stance, _get_setting(session, "scoring"))
+            )
 
             # ① 切分
             publish({"type": "stage", "stage": "切分"})
@@ -54,7 +69,7 @@ def execute_review(task_id: int, publish: Publish) -> None:
 
             # ③ 规则校验（确定性意见，逐条流式产出）
             publish({"type": "stage", "stage": "规则校验"})
-            rule_findings, checklist = rules_engine.run(chunks, redlines)
+            rule_findings, checklist = rules_engine.run(chunks, redlines, rules_cfg)
             task.checklist = checklist
             for f in rule_findings:
                 _emit(session, task.id, f, all_findings, publish)
@@ -66,7 +81,7 @@ def execute_review(task_id: int, publish: Publish) -> None:
 
             # ⑤ 评分
             publish({"type": "stage", "stage": "评分"})
-            task.score, task.level = scoring_engine.score(all_findings, scoring_cfg)
+            task.score, task.level = scoring_engine.score(all_findings, scoring_cfg, task.stance)
             task.status = "done"
             session.add(task)
             session.commit()
@@ -107,3 +122,9 @@ def _extract_profile(text: str) -> dict:
 def _get_setting(session: Session, key: str):
     s = session.get(Setting, key)
     return s.value if s else None
+
+
+def _redline_applies(redline: Redline, task: ReviewTask, doc: Document) -> bool:
+    stance_ok = redline.stance in ("", "any", task.stance)
+    doc_type_ok = redline.doc_type in ("", "any", doc.doc_type)
+    return stance_ok and doc_type_ok

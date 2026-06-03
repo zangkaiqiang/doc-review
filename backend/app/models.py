@@ -24,6 +24,9 @@ class ReviewTask(SQLModel, table=True):
     level: Optional[str] = None         # low | mid | high
     profile: dict = Field(default_factory=dict, sa_column=Column(JSON))     # 合同档案卡
     checklist: list = Field(default_factory=list, sa_column=Column(JSON))   # 条款完整性
+    rule_config: dict = Field(default_factory=dict, sa_column=Column(JSON)) # 本次审查规则快照
+    scoring_config: dict = Field(default_factory=dict, sa_column=Column(JSON)) # 本次审查评分口径快照
+    redline_snapshot: list = Field(default_factory=list, sa_column=Column(JSON)) # 本次适用红线冻结副本
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
