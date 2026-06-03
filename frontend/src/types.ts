@@ -37,3 +37,13 @@ export interface ReviewResult {
   document: { id: number; name: string; text: string };
   findings: Finding[];
 }
+
+export interface ReviewListItem {
+  id: number;
+  doc_name: string;
+  stance: string;
+  status: string;
+  score: number | null;
+  level: Level | null;
+  created_at: string;
+}
