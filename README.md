@@ -23,9 +23,8 @@ docs/      需求 / 交互 / 架构文档
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uv sync                                          # 创建虚拟环境并安装依赖（含 Python 3.12）
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 - 健康检查：http://localhost:8000/api/health
@@ -67,8 +66,8 @@ npm run dev      # http://localhost:5173（已配置 /api 代理到 8000）
   ```bash
   export DOCREVIEW_CELERY_BROKER_URL=redis://localhost:6379/0
   export DOCREVIEW_CELERY_RESULT_BACKEND=redis://localhost:6379/0
-  celery -A app.celery_app.celery worker --loglevel=info   # 另起 worker
-  uvicorn app.main:app --port 8000
+  uv run celery -A app.celery_app.celery worker --loglevel=info   # 另起 worker
+  uv run uvicorn app.main:app --port 8000
   ```
 
 ## 待接入（Roadmap）
