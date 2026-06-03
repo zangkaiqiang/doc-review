@@ -6,7 +6,7 @@ type Tone = "brand" | "high" | "mid" | "low" | "neutral";
 const TONE: Record<Tone, string> = {
   brand: "bg-brand-soft text-brand",
   high: "bg-high-soft text-high",
-  mid: "bg-mid-soft text-[#b54708]",
+  mid: "bg-mid-soft text-mid-fg",
   low: "bg-low-soft text-muted",
   neutral: "bg-line/70 text-muted",
 };
