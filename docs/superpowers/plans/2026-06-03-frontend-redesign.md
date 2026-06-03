@@ -132,6 +132,7 @@ export default defineConfig(({ mode }) => {
   --color-high-soft: #fef3f2;
   --color-mid: #f5a623;
   --color-mid-soft: #fffaeb;
+  --color-mid-fg: #b54708;
   --color-low: #98a0ac;
   --color-low-soft: #f4f5f7;
 
@@ -252,7 +253,7 @@ type Tone = "brand" | "high" | "mid" | "low" | "neutral";
 const TONE: Record<Tone, string> = {
   brand: "bg-brand-soft text-brand",
   high: "bg-high-soft text-high",
-  mid: "bg-mid-soft text-[#b54708]",
+  mid: "bg-mid-soft text-mid-fg",
   low: "bg-low-soft text-muted",
   neutral: "bg-line/70 text-muted",
 };
@@ -1164,7 +1165,7 @@ export function Dashboard(props: {
             className={cn(
               "rounded-full px-2.5 py-1 text-xs font-medium",
               l === "high" && "bg-high-soft text-high",
-              l === "mid" && "bg-mid-soft text-[#b54708]",
+              l === "mid" && "bg-mid-soft text-mid-fg",
               l === "low" && "bg-low-soft text-muted",
               props.levelFilter === l && "ring-2 ring-brand/40"
             )}
