@@ -5,6 +5,8 @@ __pycache__/
 backend/docreview.db
 backend/storage/
 .env
+.env.*
+!.env.example
 
 # Node
 frontend/node_modules/
