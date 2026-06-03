@@ -21,3 +21,14 @@ dependencies = [
 [tool.uv]
 # 应用项目（非库）：不构建/安装自身，app 包通过 `uvicorn app.main:app` 直接运行
 package = false
+
+[tool.pytest.ini_options]
+# app 包未安装，运行测试时把 backend 根目录加入 sys.path 以便 `import app`
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+]

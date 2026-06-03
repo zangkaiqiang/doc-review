@@ -37,6 +37,31 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
+@router.get("/reviews")
+def list_reviews(session: Session = Depends(get_session)):
+    """历史列表：返回审查任务（新建在前），联文档名。只读。"""
+    tasks = session.exec(
+        select(ReviewTask).order_by(ReviewTask.created_at.desc(), ReviewTask.id.desc())
+    ).all()
+    doc_ids = {t.doc_id for t in tasks}
+    names = {}
+    if doc_ids:
+        docs = session.exec(select(Document).where(Document.id.in_(doc_ids))).all()
+        names = {d.id: d.name for d in docs}
+    return [
+        {
+            "id": t.id,
+            "doc_name": names.get(t.doc_id, "未命名文档"),
+            "stance": t.stance,
+            "status": t.status,
+            "score": t.score,
+            "level": t.level,
+            "created_at": t.created_at,
+        }
+        for t in tasks
+    ]
+
+
 @router.post("/reviews")
 def create_review(body: ReviewCreate, session: Session = Depends(get_session)):
     """创建审查任务（异步执行，不在此阻塞）。返回 task_id，随后用 /stream 拉流。"""
