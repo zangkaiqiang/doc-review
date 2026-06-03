@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
     llm_timeout: int = 60
 
+    # 异步执行后端：留空=进程内线程(默认,零依赖)；设置=Celery+Redis 跨进程
+    celery_broker_url: str = ""
+    celery_result_backend: str = ""
+    # 流式产出时每条意见之间的间隔(秒)，仅为让前端流式效果可见
+    stream_delay: float = 0.05
+
     cors_origins: str = "http://localhost:5173"
 
 

@@ -1,26 +1,65 @@
 import { useEffect, useMemo, useState } from "react";
-import { getReview, updateFinding } from "../api";
-import type { Finding, Level, ReviewResult } from "../types";
+import { updateFinding } from "../api";
+import type { ChecklistItem, Finding, Level } from "../types";
 
 const LEVEL_LABEL: Record<Level, string> = { high: "高", mid: "中", low: "低" };
 const LEVEL_CLASS: Record<Level, string> = { high: "lv-high", mid: "lv-mid", low: "lv-low" };
+const STAGES = ["切分", "要素抽取", "规则校验", "LLM研判", "评分", "完成"];
 
 export default function Workspace({ taskId, onBack }: { taskId: number; onBack: () => void }) {
-  const [data, setData] = useState<ReviewResult | null>(null);
+  const [doc, setDoc] = useState<{ name: string; text: string } | null>(null);
+  const [stance, setStance] = useState("");
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [profile, setProfile] = useState<Record<string, any>>({});
+  const [score, setScore] = useState<number | null>(null);
+  const [level, setLevel] = useState<Level | null>(null);
+  const [stage, setStage] = useState<string>("连接中");
+  const [running, setRunning] = useState(true);
+
   const [selected, setSelected] = useState<number | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [levelFilter, setLevelFilter] = useState<Level | "all">("all");
 
+  // SSE：阶段进度与意见边生成边接收
   useEffect(() => {
-    getReview(taskId).then((d) => {
-      setData(d);
-      if (d.findings.length) setSelected(d.findings[0].id);
-    });
+    const es = new EventSource(`/api/reviews/${taskId}/stream`);
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      switch (ev.type) {
+        case "start":
+          setDoc(ev.document);
+          setStance(ev.stance);
+          break;
+        case "stage":
+          setStage(ev.stage);
+          break;
+        case "finding":
+          setFindings((prev) => {
+            if (prev.length === 0) setSelected(ev.finding.id);
+            return [...prev, ev.finding];
+          });
+          break;
+        case "done":
+          setScore(ev.score);
+          setLevel(ev.level);
+          setChecklist(ev.checklist || []);
+          setProfile(ev.profile || {});
+          setStage("完成");
+          setRunning(false);
+          es.close();
+          break;
+        case "error":
+          setStage("失败");
+          setRunning(false);
+          es.close();
+          break;
+      }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
   }, [taskId]);
 
-  if (!data) return <div className="loading">加载审查结果…</div>;
-
-  const { task, document: doc, findings } = data;
   const counts = {
     high: findings.filter((f) => f.level === "high").length,
     mid: findings.filter((f) => f.level === "mid").length,
@@ -31,9 +70,7 @@ export default function Workspace({ taskId, onBack }: { taskId: number; onBack: 
 
   async function patch(f: Finding, status: Finding["status"]) {
     await updateFinding(f.id, { status });
-    setData((d) =>
-      d ? { ...d, findings: d.findings.map((x) => (x.id === f.id ? { ...x, status } : x)) } : d
-    );
+    setFindings((prev) => prev.map((x) => (x.id === f.id ? { ...x, status } : x)));
   }
 
   return (
@@ -41,11 +78,21 @@ export default function Workspace({ taskId, onBack }: { taskId: number; onBack: 
       {/* ① 顶部仪表盘 */}
       <header className="dashboard">
         <button className="link" onClick={onBack}>← 返回</button>
-        <span className="docname">{doc.name}</span>
-        <span className="stance-badge">立场：{task.stance}</span>
-        <span className={`score ${task.level ? LEVEL_CLASS[task.level] : ""}`}>
-          风险评分 {task.score}/100 · {task.level ? LEVEL_LABEL[task.level] + "危" : ""}
-        </span>
+        <span className="docname">{doc?.name ?? "审查中…"}</span>
+        {stance && <span className="stance-badge">立场：{stance}</span>}
+        {running ? (
+          <span className="stage-progress">
+            {STAGES.map((s) => (
+              <i key={s} className={s === stage ? "st active" : STAGES.indexOf(s) < STAGES.indexOf(stage) ? "st done" : "st"}>
+                {s}
+              </i>
+            ))}
+          </span>
+        ) : (
+          <span className={`score ${level ? LEVEL_CLASS[level] : ""}`}>
+            风险评分 {score}/100 · {level ? LEVEL_LABEL[level] + "危" : ""}
+          </span>
+        )}
         <span className="counts">
           <i className="lv-high" onClick={() => setLevelFilter("high")}>●高 {counts.high}</i>
           <i className="lv-mid" onClick={() => setLevelFilter("mid")}>●中 {counts.mid}</i>
@@ -58,12 +105,13 @@ export default function Workspace({ taskId, onBack }: { taskId: number; onBack: 
       </header>
 
       <div className="main">
-        {/* ② 左栏：完整性 + 大纲 + 筛选 */}
+        {/* ② 左栏 */}
         {!focusMode && (
           <aside className="left">
             <h4>条款完整性</h4>
             <ul className="checklist">
-              {task.checklist.map((c) => (
+              {checklist.length === 0 && <li className="muted-li">审查中…</li>}
+              {checklist.map((c) => (
                 <li key={c.clause} className={c.present ? "ok" : "miss"}>
                   {c.present ? "✓" : "✕"} {c.clause}
                 </li>
@@ -71,21 +119,23 @@ export default function Workspace({ taskId, onBack }: { taskId: number; onBack: 
             </ul>
             <h4>合同档案卡</h4>
             <ul className="profile">
-              <li>金额：{task.profile?.amount ?? "—"}</li>
-              <li>大写金额：{task.profile?.has_amount_cn ? "有" : "缺"}</li>
-              <li>主体：{task.profile?.parties_hint ? "甲乙方" : "—"}</li>
+              <li>金额：{profile?.amount ?? "—"}</li>
+              <li>大写金额：{profile?.has_amount_cn ? "有" : "缺"}</li>
+              <li>主体：{profile?.parties_hint ? "甲乙方" : "—"}</li>
             </ul>
           </aside>
         )}
 
         {/* ③ 中栏：原文 + 高亮定位 */}
         <main className="center">
-          <DocumentText text={doc.text} finding={current} />
+          {doc ? <DocumentText text={doc.text} finding={current} /> : <div className="loading">加载原文…</div>}
         </main>
 
-        {/* ④ 右栏：意见列表 + 选中详情 */}
+        {/* ④ 右栏：意见列表 + 详情 */}
         <aside className="right">
-          <div className="findings-head">审查意见（{shown.length}）</div>
+          <div className="findings-head">
+            审查意见（{shown.length}）{running && <span className="live">● 实时</span>}
+          </div>
           <div className="findings-list">
             {shown.map((f) => (
               <div
@@ -98,6 +148,7 @@ export default function Workspace({ taskId, onBack }: { taskId: number; onBack: 
                 {f.status !== "open" && <span className="status-tag">{f.status}</span>}
               </div>
             ))}
+            {shown.length === 0 && <div className="muted-li">等待意见产出…</div>}
           </div>
 
           {current && (

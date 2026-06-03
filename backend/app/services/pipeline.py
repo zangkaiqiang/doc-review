@@ -1,58 +1,95 @@
-"""审查编排：串起架构 §3 的流水线（MVP 同步执行，便于骨架演示）。
+"""审查编排：异步执行 + 流式产出（架构 §3）。
 
-解析 → 切分 → 要素抽取 → 规则校验 → LLM研判 → 定位回填 → 评分 → 汇总
-（要素抽取在 MVP 用轻量正则占位；流式/异步留待接入 Celery+SSE）
+execute_review 由 worker（进程内线程 或 Celery）调用，自带 DB 会话，
+每完成一阶段/一条意见即通过 publish 回调推送事件。
+
+事件类型：start / stage / finding / done / error
 """
 from __future__ import annotations
 
 import re
-from typing import List
+import time
+from typing import Callable
 
 from sqlmodel import Session, select
 
+from ..config import settings
+from ..db import engine
 from ..models import Document, ReviewTask, Finding, Redline, Setting
 from . import chunker, rules_engine, llm_review, scoring_engine
 
+Publish = Callable[[dict], None]
 
-def run_review(session: Session, task: ReviewTask) -> None:
-    doc = session.get(Document, task.doc_id)
-    redlines = [r.model_dump() for r in session.exec(select(Redline).where(Redline.enabled == True)).all()]
-    scoring_cfg = _get_setting(session, "scoring")
+_FIELDS = ("source", "category", "level", "title", "quote", "problem", "basis",
+           "suggestion", "chunk_seq", "char_start", "char_end", "locate_status")
 
-    task.status = "running"
 
-    # ① 切分（解析在上传时已完成）
-    task.stage = "切分"
-    chunks = chunker.split(doc.text)
+def execute_review(task_id: int, publish: Publish) -> None:
+    with Session(engine) as session:
+        task = session.get(ReviewTask, task_id)
+        if not task:
+            return
+        doc = session.get(Document, task.doc_id)
+        try:
+            task.status = "running"
+            session.add(task)
+            session.commit()
 
-    # ② 要素抽取（MVP 轻量占位）
-    task.stage = "要素抽取"
-    task.profile = _extract_profile(doc.text)
+            publish({"type": "start", "stance": task.stance,
+                     "document": {"id": doc.id, "name": doc.name, "text": doc.text}})
 
-    # ③ 规则校验
-    task.stage = "规则校验"
-    rule_findings, checklist = rules_engine.run(chunks, redlines)
-    task.checklist = checklist
+            redlines = [r.model_dump() for r in
+                        session.exec(select(Redline).where(Redline.enabled == True)).all()]
+            scoring_cfg = _get_setting(session, "scoring")
 
-    # ④ LLM 研判（无 key 自动降级为空）
-    task.stage = "LLM研判"
-    llm_findings = llm_review.run(chunks, task.stance)
+            # ① 切分
+            publish({"type": "stage", "stage": "切分"})
+            chunks = chunker.split(doc.text)
 
-    all_findings = rule_findings + llm_findings
+            # ② 要素抽取
+            publish({"type": "stage", "stage": "要素抽取"})
+            task.profile = _extract_profile(doc.text)
 
-    # ⑤ 评分
-    task.stage = "评分"
-    task.score, task.level = scoring_engine.score(all_findings, scoring_cfg)
+            all_findings = []
 
-    # ⑥ 落库
-    task.stage = "汇总"
-    for f in all_findings:
-        session.add(Finding(task_id=task.id, **{k: f.get(k) for k in (
-            "source", "category", "level", "title", "quote", "problem", "basis",
-            "suggestion", "chunk_seq", "char_start", "char_end", "locate_status")}))
-    task.status = "done"
-    session.add(task)
-    session.commit()
+            # ③ 规则校验（确定性意见，逐条流式产出）
+            publish({"type": "stage", "stage": "规则校验"})
+            rule_findings, checklist = rules_engine.run(chunks, redlines)
+            task.checklist = checklist
+            for f in rule_findings:
+                _emit(session, task.id, f, all_findings, publish)
+
+            # ④ LLM 研判（无 key 自动降级为空）
+            publish({"type": "stage", "stage": "LLM研判"})
+            for f in llm_review.run(chunks, task.stance):
+                _emit(session, task.id, f, all_findings, publish)
+
+            # ⑤ 评分
+            publish({"type": "stage", "stage": "评分"})
+            task.score, task.level = scoring_engine.score(all_findings, scoring_cfg)
+            task.status = "done"
+            session.add(task)
+            session.commit()
+
+            publish({"type": "done", "status": "done", "score": task.score,
+                     "level": task.level, "checklist": task.checklist, "profile": task.profile})
+        except Exception as e:  # noqa: BLE001
+            task.status = "failed"
+            session.add(task)
+            session.commit()
+            publish({"type": "error", "message": str(e)})
+
+
+def _emit(session: Session, task_id: int, f: dict, acc: list, publish: Publish) -> None:
+    row = Finding(task_id=task_id, **{k: f.get(k) for k in _FIELDS})
+    session.add(row)
+    session.flush()          # 取得自增 id
+    acc.append(f)
+    payload = {"id": row.id, "task_id": task_id, "status": "open",
+               **{k: f.get(k) for k in _FIELDS}}
+    publish({"type": "finding", "finding": payload})
+    if settings.stream_delay:
+        time.sleep(settings.stream_delay)
 
 
 def _extract_profile(text: str) -> dict:

@@ -32,6 +32,13 @@ textarea { width: 100%; padding: 12px; border: 1px solid var(--border); border-r
 .score.lv-high { background: #fde8e8; color: var(--high); }
 .score.lv-mid { background: #fef3e2; color: #b45309; }
 .score.lv-low { background: #e7f6ec; color: #15803d; }
+.stage-progress { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.stage-progress .st { color: #9aa0a6; padding: 2px 8px; border-radius: 10px; background: #f1f2f4; }
+.stage-progress .st.done { color: #15803d; background: #e7f6ec; }
+.stage-progress .st.active { color: #1d4ed8; background: #eff6ff; font-weight: 600; }
+.live { color: var(--high); font-size: 11px; margin-left: 6px; animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+.muted-li { color: #9aa0a6; font-size: 12px; padding: 8px 12px; }
 .counts { display: flex; gap: 10px; margin-left: auto; }
 .counts i { cursor: pointer; font-style: normal; }
 .link { background: none; border: none; color: #1d4ed8; cursor: pointer; }
