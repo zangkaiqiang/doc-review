@@ -19,21 +19,26 @@ def init_db() -> None:
     _ensure_sqlite_columns()
 
 
-def _ensure_sqlite_columns() -> None:
+def _ensure_sqlite_columns(target_engine=None) -> None:
     """Lightweight compatibility migration for local SQLite databases."""
-    if not settings.database_url.startswith("sqlite"):
+    eng = target_engine or engine
+    if eng.url.get_backend_name() != "sqlite":
         return
-    inspector = inspect(engine)
+    inspector = inspect(eng)
     if "reviewtask" not in inspector.get_table_names():
         return
     columns = {col["name"] for col in inspector.get_columns("reviewtask")}
-    with engine.begin() as conn:
+    with eng.begin() as conn:
         if "rule_config" not in columns:
             conn.execute(text("ALTER TABLE reviewtask ADD COLUMN rule_config JSON DEFAULT '{}'"))
         if "scoring_config" not in columns:
             conn.execute(text("ALTER TABLE reviewtask ADD COLUMN scoring_config JSON DEFAULT '{}'"))
         if "redline_snapshot" not in columns:
             conn.execute(text("ALTER TABLE reviewtask ADD COLUMN redline_snapshot JSON DEFAULT '[]'"))
+        if "parent_task_id" not in columns:
+            conn.execute(text("ALTER TABLE reviewtask ADD COLUMN parent_task_id INTEGER"))
+        if "version" not in columns:
+            conn.execute(text("ALTER TABLE reviewtask ADD COLUMN version INTEGER DEFAULT 1"))
 
 
 def get_session():

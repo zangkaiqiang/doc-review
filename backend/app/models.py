@@ -27,6 +27,8 @@ class ReviewTask(SQLModel, table=True):
     rule_config: dict = Field(default_factory=dict, sa_column=Column(JSON)) # 本次审查规则快照
     scoring_config: dict = Field(default_factory=dict, sa_column=Column(JSON)) # 本次审查评分口径快照
     redline_snapshot: list = Field(default_factory=list, sa_column=Column(JSON)) # 本次适用红线冻结副本
+    parent_task_id: Optional[int] = Field(default=None, foreign_key="reviewtask.id")  # source task for re-run derived versions
+    version: int = Field(default=1)      # version number (incremented on re-run derivation)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
