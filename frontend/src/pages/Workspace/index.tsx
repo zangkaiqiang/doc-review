@@ -199,7 +199,7 @@ export default function Workspace() {
         onToggleFocus={() => setFocusMode((v) => !v)}
         onBack={() => nav("/history")}
         version={task?.version ?? 1}
-        onAdjustRules={task ? () => setDrawerOpen(true) : undefined}
+        onAdjustRules={task && !running ? () => setDrawerOpen(true) : undefined}
       />
 
       <div

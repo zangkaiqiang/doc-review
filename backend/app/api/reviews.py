@@ -173,7 +173,9 @@ def rerun_review(task_id: int, body: ReviewRerun, session: Session = Depends(get
         redline_snapshot=redline_snapshot,
         parent_task_id=parent.id, version=(parent.version or 1) + 1,
     )
-    start_review(new.id)
+    # Do NOT start the worker here. Like create_review, leave it pending and let the
+    # /stream endpoint subscribe-then-start, so the new version's early SSE events
+    # (start/document, first findings) are not lost to a race before the client connects.
     return {"task_id": new.id, "version": new.version}
 
 

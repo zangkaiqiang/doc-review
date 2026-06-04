@@ -1,7 +1,4 @@
-"""重跑端点：派生新版本、继承父快照、状态校验。"""
-from unittest.mock import patch
-
-import pytest
+"""重跑端点：派生新版本、继承父快照、状态校验、懒起跑（不抢在 /stream 之前起跑）。"""
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -37,14 +34,7 @@ def _seed_task(*, status="done", stance="party_a", rule_config=None,
         return task.id
 
 
-@pytest.fixture(autouse=True)
-def no_background_review():
-    """Stub out start_review so tests don't race against a background pipeline thread."""
-    with patch("app.api.reviews.start_review") as m:
-        yield m
-
-
-def test_rerun_creates_new_version_with_parent_link(no_background_review):
+def test_rerun_creates_new_version_with_parent_link():
     """新任务应携带 version=2、parent_task_id 指向父、rule_config 按请求覆盖。"""
     pid = _seed_task(version=1)
     resp = client.post(f"/api/reviews/{pid}/rerun", json={
@@ -55,8 +45,6 @@ def test_rerun_creates_new_version_with_parent_link(no_background_review):
     data = resp.json()
     assert data["version"] == 2
     new_id = data["task_id"]
-    # 起跑的是派生出的新任务，而非父任务
-    no_background_review.assert_called_once_with(new_id)
     with Session(engine) as s:
         new = s.get(ReviewTask, new_id)
         assert new.parent_task_id == pid
@@ -105,3 +93,26 @@ def test_rerun_missing_parent_returns_404():
     """不存在的父任务 ID 应返回 404。"""
     resp = client.post("/api/reviews/999999/rerun", json={})
     assert resp.status_code == 404
+
+
+def test_rerun_leaves_new_task_pending():
+    """rerun 只建 pending 任务、不抢在 /stream 订阅前起跑（避免漏掉早期 SSE 事件）。"""
+    pid = _seed_task()
+    new_id = client.post(f"/api/reviews/{pid}/rerun", json={}).json()["task_id"]
+    with Session(engine) as s:
+        assert s.get(ReviewTask, new_id).status == "pending"
+
+
+def test_rerun_then_stream_delivers_new_version_end_to_end():
+    """端到端：连上新版本 /stream 后才起跑，应完整收到 start(含文档) 与 done。"""
+    pid = _seed_task()
+    new_id = client.post(f"/api/reviews/{pid}/rerun", json={}).json()["task_id"]
+    # 连接 /stream 触发订阅+起跑；StreamingResponse 在 done 后结束，body 含全部事件
+    resp = client.get(f"/api/reviews/{new_id}/stream")
+    assert resp.status_code == 200
+    body = resp.text
+    assert '"type": "start"' in body          # 文档随 start 事件下发，不会丢失
+    assert "违约责任" in body                   # start 事件携带的原文
+    assert '"type": "done"' in body
+    with Session(engine) as s:
+        assert s.get(ReviewTask, new_id).status == "done"
