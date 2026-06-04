@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getReview, updateFinding } from "../../lib/api";
+import { getReview, rerunReview, updateFinding } from "../../lib/api";
 import { useToast } from "../../components/ui/toast";
-import type { ChecklistItem, Finding, Level, ReviewTask } from "../../types";
+import type { ChecklistItem, Finding, Level, ReviewTask, RuleConfig, ScoringConfig } from "../../types";
 import { Dashboard } from "./Dashboard";
 import { ClauseChecklist } from "./ClauseChecklist";
 import { ProfileCard } from "./ProfileCard";
@@ -11,6 +11,9 @@ import { DocumentView } from "./DocumentView";
 import { FindingsList } from "./FindingsList";
 import { FindingDetail } from "./FindingDetail";
 import { ReviewAgent } from "./ReviewAgent";
+import { RuleDrawer } from "./RuleDrawer";
+import { normalizeRuleConfig } from "../../components/RuleTemplateEditor";
+import { normalizeScoringConfig, defaultScoring } from "../../components/ScoringEditor";
 import { cn } from "../../lib/cn";
 
 export default function Workspace() {
@@ -29,6 +32,7 @@ export default function Workspace() {
   const [stage, setStage] = useState("连接中");
   const [running, setRunning] = useState(true);
   const [task, setTask] = useState<ReviewTask | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [focusMode, setFocusMode] = useState(false);
@@ -118,6 +122,19 @@ export default function Workspace() {
     }
   }
 
+  async function handleRerun(rule: RuleConfig, scoring: ScoringConfig) {
+    try {
+      const { task_id } = await rerunReview(taskId, {
+        rule_config: normalizeRuleConfig(rule),
+        scoring_config: normalizeScoringConfig(scoring),
+      });
+      setDrawerOpen(false);
+      nav(`/review/${task_id}`);
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e), "error");
+    }
+  }
+
   function startSideResize(edge: "left" | "right", event: PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     const startX = event.clientX;
@@ -181,6 +198,8 @@ export default function Workspace() {
         focusMode={focusMode}
         onToggleFocus={() => setFocusMode((v) => !v)}
         onBack={() => nav("/history")}
+        version={task?.version ?? 1}
+        onAdjustRules={task ? () => setDrawerOpen(true) : undefined}
       />
 
       <div
@@ -233,6 +252,17 @@ export default function Workspace() {
           </aside>
         )}
       </div>
+
+      {task && (
+        <RuleDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          version={task.version ?? 1}
+          initialRule={task.rule_config}
+          initialScoring={task.scoring_config ?? defaultScoring()}
+          onSubmit={handleRerun}
+        />
+      )}
     </div>
   );
 }

@@ -25,6 +25,19 @@ export async function createReview(body: {
   return r.json();
 }
 
+export async function rerunReview(
+  taskId: number,
+  body: { rule_config?: RuleConfig; scoring_config?: ScoringConfig }
+): Promise<{ task_id: number; version: number }> {
+  const r = await fetch(`/api/reviews/${taskId}/rerun`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error("重跑失败");
+  return r.json();
+}
+
 export async function listReviews(): Promise<ReviewListItem[]> {
   const r = await fetch("/api/reviews");
   if (!r.ok) throw new Error("获取历史失败");

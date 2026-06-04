@@ -1,4 +1,4 @@
-import { ArrowLeft, LayoutPanelLeft, Maximize2 } from "lucide-react";
+import { ArrowLeft, LayoutPanelLeft, Maximize2, SlidersHorizontal } from "lucide-react";
 import type { Level } from "../../types";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -21,6 +21,8 @@ export function Dashboard(props: {
   focusMode: boolean;
   onToggleFocus: () => void;
   onBack: () => void;
+  version?: number;
+  onAdjustRules?: () => void;
 }) {
   const currentIndex = STAGES.indexOf(props.stage);
   const total = props.counts.high + props.counts.mid + props.counts.low;
@@ -71,6 +73,12 @@ export function Dashboard(props: {
               {level === "high" ? "高" : level === "mid" ? "中" : "低"} {props.counts[level]}
             </button>
           ))}
+          {props.onAdjustRules && (
+            <Button variant="ghost" size="sm" onClick={props.onAdjustRules}>
+              <SlidersHorizontal size={15} />
+              调整规则{props.version ? ` · v${props.version}` : ""}
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={props.onToggleFocus}>
             {props.focusMode ? <LayoutPanelLeft size={15} /> : <Maximize2 size={15} />}
             {props.focusMode ? "完整模式" : "专注模式"}
