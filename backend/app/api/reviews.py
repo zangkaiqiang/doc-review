@@ -37,6 +37,11 @@ class ReviewCreate(BaseModel):
     scoring_config: dict | None = None
 
 
+class ReviewRerun(BaseModel):
+    rule_config: dict | None = None
+    scoring_config: dict | None = None
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -137,6 +142,39 @@ def create_review(body: ReviewCreate, session: Session = Depends(get_session)):
         rule_config=rule_config, scoring_config=scoring_config,
     )
     return {"task_id": task.id, "status": task.status}
+
+
+@router.post("/reviews/{task_id}/rerun")
+def rerun_review(task_id: int, body: ReviewRerun, session: Session = Depends(get_session)):
+    """基于已完成/失败任务派生新版本：仅改规则/评分，沿用文档+立场+红线快照。"""
+    parent = session.get(ReviewTask, task_id)
+    if not parent:
+        raise HTTPException(404, "任务不存在")
+    if parent.status in ("pending", "running"):
+        raise HTTPException(409, "父任务尚未完成，无法派生")
+    doc = session.get(Document, parent.doc_id)
+    if not doc:
+        raise HTTPException(404, "文档不存在")
+
+    # Inherit parent snapshot by default; only normalize when user explicitly provides a field
+    rule_config = (
+        rules_engine.normalize_rules(body.rule_config, parent.stance)
+        if body.rule_config is not None else parent.rule_config
+    )
+    scoring_config = (
+        scoring_engine.normalize_scoring(body.scoring_config, parent.stance)
+        if body.scoring_config is not None else parent.scoring_config
+    )
+    redline_snapshot = list(parent.redline_snapshot) if parent.redline_snapshot else None
+
+    new = _freeze_and_create_task(
+        session, doc=doc, stance=parent.stance,
+        rule_config=rule_config, scoring_config=scoring_config,
+        redline_snapshot=redline_snapshot,
+        parent_task_id=parent.id, version=(parent.version or 1) + 1,
+    )
+    start_review(new.id)
+    return {"task_id": new.id, "version": new.version}
 
 
 @router.get("/reviews/{task_id}/stream")
