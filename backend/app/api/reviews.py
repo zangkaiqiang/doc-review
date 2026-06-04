@@ -77,6 +77,32 @@ def list_reviews(session: Session = Depends(get_session)):
     ]
 
 
+def _freeze_and_create_task(
+    session: Session, *, doc: Document, stance: str,
+    rule_config: dict, scoring_config: dict,
+    redline_snapshot: list | None = None,
+    parent_task_id: int | None = None, version: int = 1,
+) -> ReviewTask:
+    """Freeze redline snapshot (if not provided) and create a pending ReviewTask.
+    Shared by create and rerun endpoints."""
+    if redline_snapshot is None:
+        rows = session.exec(select(Redline).where(Redline.enabled == True)).all()  # noqa: E712
+        redline_snapshot = [
+            r.model_dump() for r in rows
+            if r.stance in ("", "any", stance) and r.doc_type in ("", "any", doc.doc_type)
+        ]
+    task = ReviewTask(
+        doc_id=doc.id, stance=stance, status="pending",
+        rule_config=rule_config, scoring_config=scoring_config,
+        redline_snapshot=redline_snapshot,
+        parent_task_id=parent_task_id, version=version,
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
 @router.post("/reviews")
 def create_review(body: ReviewCreate, session: Session = Depends(get_session)):
     """创建审查任务（异步执行，不在此阻塞）。返回 task_id，随后用 /stream 拉流。"""
@@ -106,20 +132,10 @@ def create_review(body: ReviewCreate, session: Session = Depends(get_session)):
             body.stance, scoring_setting.value if scoring_setting else None
         )
     )
-    # 冻结本次适用红线（按立场+文档类型过滤）为内容副本，使结论不受后续红线库改动影响。
-    redline_rows = session.exec(select(Redline).where(Redline.enabled == True)).all()  # noqa: E712
-    redline_snapshot = [
-        r.model_dump() for r in redline_rows
-        if r.stance in ("", "any", body.stance) and r.doc_type in ("", "any", doc.doc_type)
-    ]
-    task = ReviewTask(
-        doc_id=doc.id, stance=body.stance, status="pending",
+    task = _freeze_and_create_task(
+        session, doc=doc, stance=body.stance,
         rule_config=rule_config, scoring_config=scoring_config,
-        redline_snapshot=redline_snapshot,
     )
-    session.add(task)
-    session.commit()
-    session.refresh(task)
     return {"task_id": task.id, "status": task.status}
 
 
