@@ -122,126 +122,120 @@ export default function NewReview() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <Badge tone="brand">新任务</Badge>
-            <Badge tone="neutral">流式审查</Badge>
-          </div>
-          <h1 className="text-2xl font-semibold text-ink">新建审查</h1>
+    <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mb-6">
+        <div className="mb-2 flex items-center gap-2">
+          <Badge tone="brand">新任务</Badge>
+          <Badge tone="neutral">流式审查</Badge>
         </div>
-        <Button disabled={!canStart || submitting || uploading} onClick={start} size="lg">
-          {submitting ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-          {submitting ? "提交中" : "开始审查"}
-        </Button>
+        <h1 className="text-2xl font-semibold text-ink">新建审查</h1>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
-          <Tabs.Root value={mode} onValueChange={(value) => setMode(value as "upload" | "paste")}>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
-              <Tabs.List className="flex rounded-control border border-line bg-surface p-1">
-                {[
-                  { value: "upload", label: "上传文件", icon: UploadCloud },
-                  { value: "paste", label: "粘贴文本", icon: ClipboardList },
-                ].map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <Tabs.Trigger
-                      key={tab.value}
-                      value={tab.value}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm text-muted transition-colors data-[state=active]:bg-brand data-[state=active]:text-white"
-                    >
-                      <Icon size={15} />
-                      {tab.label}
-                    </Tabs.Trigger>
-                  );
-                })}
-              </Tabs.List>
-              <div className="text-xs tabular-nums text-muted">
-                {mode === "upload" ? (docInfo ? `${docInfo.chars.toLocaleString()} 字` : "等待文件") : `${textChars.toLocaleString()} 字`}
-              </div>
-            </div>
-
-            <Tabs.Content value="upload" className="p-5">
-              <div
-                onClick={() => fileInput.current?.click()}
-                onDragEnter={() => setDragging(true)}
-                onDragLeave={() => setDragging(false)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragging(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) onFile(file);
-                }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    fileInput.current?.click();
-                  }
-                }}
-                className={cn(
-                  "flex min-h-80 cursor-pointer flex-col items-center justify-center gap-3 rounded-card border border-dashed px-6 py-12 text-center transition-colors",
-                  dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-panel hover:border-brand/50 hover:bg-brand-soft/30"
-                )}
-              >
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept=".docx,.pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) onFile(file);
-                    e.target.value = "";
-                  }}
-                />
-                {uploading ? (
-                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-brand-soft text-brand">
-                    <Loader2 className="animate-spin" size={24} />
-                  </span>
-                ) : docId ? (
-                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-good-soft text-good">
-                    <FileText size={24} />
-                  </span>
-                ) : (
-                  <span className="flex h-14 w-14 items-center justify-center rounded-card bg-surface text-faint shadow-soft">
-                    <UploadCloud size={24} />
-                  </span>
-                )}
-                <div>
-                  <div className="text-sm font-medium text-ink">
-                    {uploading ? "解析中" : docInfo ? docInfo.name : "选择 .docx / .pdf"}
-                  </div>
-                  <div className="mt-1 text-xs text-muted">
-                    {docInfo ? `${docInfo.chars.toLocaleString()} 字已解析` : "拖拽到此处，或点击选择文件"}
-                  </div>
+      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+          <section className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
+            <Tabs.Root value={mode} onValueChange={(value) => setMode(value as "upload" | "paste")}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-panel px-4 py-3">
+                <Tabs.List className="flex rounded-control border border-line bg-surface p-1">
+                  {[
+                    { value: "upload", label: "上传文件", icon: UploadCloud },
+                    { value: "paste", label: "粘贴文本", icon: ClipboardList },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <Tabs.Trigger
+                        key={tab.value}
+                        value={tab.value}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm text-muted transition-colors data-[state=active]:bg-brand data-[state=active]:text-white"
+                      >
+                        <Icon size={15} />
+                        {tab.label}
+                      </Tabs.Trigger>
+                    );
+                  })}
+                </Tabs.List>
+                <div className="text-xs tabular-nums text-muted">
+                  {mode === "upload" ? (docInfo ? `${docInfo.chars.toLocaleString()} 字` : "等待文件") : `${textChars.toLocaleString()} 字`}
                 </div>
               </div>
-            </Tabs.Content>
 
-            <Tabs.Content value="paste" className="p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm font-medium text-ink2">文档文本</div>
-                <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
-                  填入示例
-                </Button>
-              </div>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={18}
-                className="min-h-80 w-full resize-y rounded-card border border-line bg-panel p-4 font-mono text-[13px] leading-7 text-ink2 outline-none transition-colors focus:border-brand/50 focus:bg-surface"
-              />
-            </Tabs.Content>
-          </Tabs.Root>
-        </section>
+              <Tabs.Content value="upload" className="p-5">
+                <div
+                  onClick={() => fileInput.current?.click()}
+                  onDragEnter={() => setDragging(true)}
+                  onDragLeave={() => setDragging(false)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) onFile(file);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      fileInput.current?.click();
+                    }
+                  }}
+                  className={cn(
+                    "flex min-h-56 cursor-pointer flex-col items-center justify-center gap-3 rounded-card border border-dashed px-6 py-10 text-center transition-colors",
+                    dragging ? "border-brand bg-brand-soft" : "border-line-strong bg-panel hover:border-brand/50 hover:bg-brand-soft/30"
+                  )}
+                >
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".docx,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) onFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  {uploading ? (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-card bg-brand-soft text-brand">
+                      <Loader2 className="animate-spin" size={24} />
+                    </span>
+                  ) : docId ? (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-card bg-good-soft text-good">
+                      <FileText size={24} />
+                    </span>
+                  ) : (
+                    <span className="flex h-14 w-14 items-center justify-center rounded-card bg-surface text-faint shadow-soft">
+                      <UploadCloud size={24} />
+                    </span>
+                  )}
+                  <div>
+                    <div className="text-sm font-medium text-ink">
+                      {uploading ? "解析中" : docInfo ? docInfo.name : "选择 .docx / .pdf"}
+                    </div>
+                    <div className="mt-1 text-xs text-muted">
+                      {docInfo ? `${docInfo.chars.toLocaleString()} 字已解析` : "拖拽到此处，或点击选择文件"}
+                    </div>
+                  </div>
+                </div>
+              </Tabs.Content>
 
-        <aside className="space-y-4">
+              <Tabs.Content value="paste" className="p-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-sm font-medium text-ink2">文档文本</div>
+                  <Button variant="ghost" size="sm" onClick={() => setText(SAMPLE)}>
+                    填入示例
+                  </Button>
+                </div>
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  rows={10}
+                  className="min-h-56 w-full resize-y rounded-card border border-line bg-panel p-4 font-mono text-[13px] leading-7 text-ink2 outline-none transition-colors focus:border-brand/50 focus:bg-surface"
+                />
+              </Tabs.Content>
+            </Tabs.Root>
+          </section>
+
           <section className="rounded-card border border-line bg-surface p-4 shadow-soft">
             <div className="mb-3 text-sm font-semibold text-ink">审查立场</div>
             <div className="grid gap-2">
@@ -294,30 +288,30 @@ export default function NewReview() {
               {submitting ? "提交中" : "开始审查"}
             </Button>
           </section>
-
-          <section className="rounded-card border border-line bg-surface shadow-soft">
-            <div className="flex items-center justify-between gap-2 border-b border-line bg-panel px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold text-ink">本次审查规则</div>
-                <div className="mt-1 text-xs text-muted">{STANCE_LABEL[stance] ?? stance}默认模板，可在提交前覆盖。</div>
-              </div>
-              {rulesLoading ? <Loader2 size={16} className="shrink-0 animate-spin text-muted" /> : <Badge tone="neutral">任务快照</Badge>}
-            </div>
-            <div className="max-h-[640px] space-y-4 overflow-y-auto p-4">
-              {ruleConfig ? (
-                <RuleTemplateEditor value={ruleConfig} onChange={setRuleConfig} compact />
-              ) : (
-                <div className="rounded-control border border-line bg-panel p-4 text-sm text-muted">规则模板加载中</div>
-              )}
-              {scoringConfig ? (
-                <div className="border-t border-line pt-4">
-                  <div className="mb-3 text-sm font-medium text-ink2">评分口径</div>
-                  <ScoringEditor value={scoringConfig} onChange={setScoringConfig} compact />
-                </div>
-              ) : null}
-            </div>
-          </section>
         </aside>
+
+        <section className="min-w-0 rounded-card border border-line bg-surface shadow-soft">
+          <div className="flex items-center justify-between gap-2 border-b border-line bg-panel px-5 py-4">
+            <div>
+              <div className="text-base font-semibold text-ink">本次审查规则</div>
+              <div className="mt-1 text-xs text-muted">{STANCE_LABEL[stance] ?? stance}默认模板，可在提交前覆盖。审查规则是本次任务的核心依据。</div>
+            </div>
+            {rulesLoading ? <Loader2 size={16} className="shrink-0 animate-spin text-muted" /> : <Badge tone="neutral">任务快照</Badge>}
+          </div>
+          <div className="space-y-6 p-5">
+            {ruleConfig ? (
+              <RuleTemplateEditor value={ruleConfig} onChange={setRuleConfig} />
+            ) : (
+              <div className="rounded-control border border-line bg-panel p-4 text-sm text-muted">规则模板加载中</div>
+            )}
+            {scoringConfig ? (
+              <div className="border-t border-line pt-5">
+                <div className="mb-3 text-sm font-medium text-ink2">评分口径</div>
+                <ScoringEditor value={scoringConfig} onChange={setScoringConfig} />
+              </div>
+            ) : null}
+          </div>
+        </section>
       </div>
     </div>
   );
