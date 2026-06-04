@@ -32,6 +32,8 @@ export interface ReviewTask {
   checklist: ChecklistItem[];
   rule_config: RuleConfig;
   scoring_config?: ScoringConfig;
+  version?: number;
+  parent_task_id?: number | null;
 }
 
 export interface ReviewResult {

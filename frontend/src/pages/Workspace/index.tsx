@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { updateFinding } from "../../lib/api";
+import { getReview, updateFinding } from "../../lib/api";
 import { useToast } from "../../components/ui/toast";
-import type { ChecklistItem, Finding, Level } from "../../types";
+import type { ChecklistItem, Finding, Level, ReviewTask } from "../../types";
 import { Dashboard } from "./Dashboard";
 import { ClauseChecklist } from "./ClauseChecklist";
 import { ProfileCard } from "./ProfileCard";
@@ -27,6 +27,7 @@ export default function Workspace() {
   const [level, setLevel] = useState<Level | null>(null);
   const [stage, setStage] = useState("连接中");
   const [running, setRunning] = useState(true);
+  const [task, setTask] = useState<ReviewTask | null>(null);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [focusMode, setFocusMode] = useState(false);
@@ -81,6 +82,20 @@ export default function Workspace() {
       es.close();
     };
     return () => es.close();
+  }, [taskId]);
+
+  // Fetch full task details (rule snapshot, version, parent id) for the rule snapshot card and rules drawer
+  useEffect(() => {
+    let alive = true;
+    getReview(taskId)
+      .then((r) => {
+        if (alive) setTask(r.task);
+      })
+      // non-critical: task snapshot feeds the rule card / drawer; skip silently if unavailable
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [taskId]);
 
   const counts = {
