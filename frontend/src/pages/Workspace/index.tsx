@@ -6,6 +6,7 @@ import type { ChecklistItem, Finding, Level, ReviewTask } from "../../types";
 import { Dashboard } from "./Dashboard";
 import { ClauseChecklist } from "./ClauseChecklist";
 import { ProfileCard } from "./ProfileCard";
+import { RuleSnapshotCard } from "./RuleSnapshotCard";
 import { DocumentView } from "./DocumentView";
 import { FindingsList } from "./FindingsList";
 import { FindingDetail } from "./FindingDetail";
@@ -192,6 +193,13 @@ export default function Workspace() {
       >
         {!focusMode && (
           <aside className="min-w-0 overflow-auto rounded-card border border-line bg-surface p-4 shadow-soft">
+            {task && (
+              <RuleSnapshotCard
+                version={task.version ?? 1}
+                clauseCount={task.rule_config?.checklist?.length ?? 0}
+                thresholds={task.scoring_config?.thresholds ?? { low: 0, mid: 0 }}
+              />
+            )}
             <ClauseChecklist items={checklist} />
             <ProfileCard profile={profile} />
           </aside>
