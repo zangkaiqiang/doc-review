@@ -138,7 +138,7 @@ def normalize_rules(config: dict | None = None, stance: str | None = None) -> di
 
 
 def normalize_rule_templates(config: dict | None = None) -> dict:
-    """Normalize persisted per-stance templates.
+    """Normalize persisted per-template rule config.
 
     Older versions stored a single rule config. Treat that legacy shape as a
     shared template so existing deployments keep working.
@@ -146,10 +146,9 @@ def normalize_rule_templates(config: dict | None = None) -> dict:
     if _looks_like_rule_config(config):
         return {stance: normalize_rules(config, stance) for stance in STANCE_KEYS}
     config = config or {}
-    return {
-        stance: normalize_rules(config.get(stance) if isinstance(config, dict) else None, stance)
-        for stance in STANCE_KEYS
-    }
+    if not isinstance(config, dict) or not config:
+        return default_rule_templates()
+    return {str(key): normalize_rules(value if isinstance(value, dict) else None, str(key)) for key, value in config.items()}
 
 
 def resolve_rules_for_stance(stance: str, config: dict | None = None) -> dict:

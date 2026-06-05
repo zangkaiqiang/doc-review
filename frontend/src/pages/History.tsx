@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, FileText, Inbox, Search } from "lucide-react";
-import { listReviews } from "../lib/api";
-import { LEVEL_LABEL, STANCE_LABEL, STATUS_LABEL } from "../lib/labels";
-import type { ReviewListItem } from "../types";
+import { getReviewTemplates, listReviews } from "../lib/api";
+import { LEVEL_LABEL, STATUS_LABEL } from "../lib/labels";
+import type { ReviewListItem, ReviewTemplate } from "../types";
 import { Badge, levelTone } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -33,22 +33,34 @@ function statusTone(status: string): "good" | "info" | "high" | "neutral" {
 export default function History() {
   const nav = useNavigate();
   const [items, setItems] = useState<ReviewListItem[] | null>(null);
+  const [templates, setTemplates] = useState<ReviewTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    listReviews().then(setItems).catch((e) => setError(String(e.message ?? e)));
+    Promise.all([listReviews(), getReviewTemplates()])
+      .then(([reviewItems, templateItems]) => {
+        setItems(reviewItems);
+        setTemplates(templateItems);
+      })
+      .catch((e) => setError(String(e.message ?? e)));
   }, []);
+
+  const templateLabels = useMemo(
+    () => Object.fromEntries(templates.map((item) => [item.key, item.label])),
+    [templates]
+  );
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (items ?? []).filter((item) => {
-      const matchQuery = !q || item.doc_name.toLowerCase().includes(q) || item.stance.toLowerCase().includes(q);
+      const templateLabel = templateLabels[item.stance] ?? item.stance;
+      const matchQuery = !q || item.doc_name.toLowerCase().includes(q) || item.stance.toLowerCase().includes(q) || templateLabel.toLowerCase().includes(q);
       const matchStatus = filter === "all" || item.status === filter;
       return matchQuery && matchStatus;
     });
-  }, [filter, items, query]);
+  }, [filter, items, query, templateLabels]);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -121,7 +133,7 @@ export default function History() {
           <div>
             <div className="hidden grid-cols-[minmax(0,1fr)_110px_110px_120px_130px] gap-4 border-b border-line px-4 py-2.5 text-xs font-medium text-faint md:grid">
               <span>文档</span>
-              <span>立场</span>
+              <span>模板</span>
               <span>状态</span>
               <span>评分</span>
               <span className="text-right">创建时间</span>
@@ -142,7 +154,7 @@ export default function History() {
                       <span className="mt-0.5 block text-xs text-faint md:hidden">{when(item.created_at)}</span>
                     </span>
                   </span>
-                  <Badge tone="brand" className="w-fit">{STANCE_LABEL[item.stance] ?? item.stance}</Badge>
+                  <Badge tone="brand" className="w-fit">{templateLabels[item.stance] ?? item.stance}</Badge>
                   <Badge tone={statusTone(item.status)} className="w-fit">{STATUS_LABEL[item.status] ?? item.status}</Badge>
                   {item.level ? (
                     <Badge tone={levelTone[item.level]} className="w-fit">

@@ -29,8 +29,8 @@ class ModelGateway:
     def available(self) -> bool:
         return bool(self._cfg.get("api_key"))
 
-    def chat_json(self, system: str, user: str) -> Optional[list]:
-        """请求结构化 JSON 输出。失败返回 None（触发降级）。"""
+    def chat_object(self, system: str, user: str) -> Optional[dict]:
+        """请求 JSON object。失败返回 None（触发降级）。"""
         if not self.available:
             return None
         try:
@@ -49,11 +49,17 @@ class ModelGateway:
                 ],
             )
             content = resp.choices[0].message.content or "{}"
-            data = json.loads(content)
-            return data.get("findings", [])
+            return json.loads(content)
         except Exception:
-            # 失败降级：返回 None，流水线只保留规则类意见
+            # 失败降级：返回 None，业务层保留规则类结果
             return None
+
+    def chat_json(self, system: str, user: str) -> Optional[list]:
+        """请求结构化 JSON findings。失败返回 None（触发降级）。"""
+        data = self.chat_object(system, user)
+        if data is None:
+            return None
+        return data.get("findings", [])
 
     def chat_text(self, system: str, user: str) -> Optional[str]:
         """请求普通文本输出。失败返回 None，由调用方决定兜底策略。"""

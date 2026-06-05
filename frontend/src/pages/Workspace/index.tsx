@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getReview, rerunReview, updateFinding } from "../../lib/api";
+import { getReview, getReviewTemplates, rerunReview } from "../../lib/api";
 import { useToast } from "../../components/ui/toast";
 import type { ChecklistItem, Finding, Level, ReviewTask, RuleConfig, ScoringConfig } from "../../types";
 import { Dashboard } from "./Dashboard";
 import { ClauseChecklist } from "./ClauseChecklist";
 import { ProfileCard } from "./ProfileCard";
 import { RuleSnapshotCard } from "./RuleSnapshotCard";
-import { DocumentView } from "./DocumentView";
+import { DocumentView, type DocumentAnchor } from "./DocumentView";
 import { FindingsList } from "./FindingsList";
 import { FindingDetail } from "./FindingDetail";
 import { ReviewAgent } from "./ReviewAgent";
@@ -33,10 +33,13 @@ export default function Workspace() {
   const [running, setRunning] = useState(true);
   const [task, setTask] = useState<ReviewTask | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [templateLabels, setTemplateLabels] = useState<Record<string, string>>({});
 
   const [selected, setSelected] = useState<number | null>(null);
+  const [clauseAnchor, setClauseAnchor] = useState<DocumentAnchor | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [levelFilter, setLevelFilter] = useState<Level | "all">("all");
+  const [sourceFilter, setSourceFilter] = useState<Finding["source"] | "all">("all");
   const [sideWidth, setSideWidth] = useState(320);
   const [docHeight, setDocHeight] = useState<number | null>(null);
   const [findingsHeight, setFindingsHeight] = useState<number | null>(null);
@@ -103,23 +106,103 @@ export default function Workspace() {
     };
   }, [taskId]);
 
-  const counts = {
+  useEffect(() => {
+    let alive = true;
+    getReviewTemplates()
+      .then((items) => {
+        if (alive) setTemplateLabels(Object.fromEntries(items.map((item) => [item.key, item.label])));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const counts = useMemo(() => ({
     high: findings.filter((f) => f.level === "high").length,
     mid: findings.filter((f) => f.level === "mid").length,
     low: findings.filter((f) => f.level === "low").length,
-  };
-  const shown = levelFilter === "all" ? findings : findings.filter((f) => f.level === levelFilter);
-  const current = findings.find((f) => f.id === selected) || null;
-
-  async function patch(status: Finding["status"]) {
-    if (!current) return;
-    try {
-      await updateFinding(current.id, { status });
-      setFindings((prev) => prev.map((x) => (x.id === current.id ? { ...x, status } : x)));
-      toast(status === "accepted" ? "已采纳" : "已驳回");
-    } catch {
-      toast("操作失败，请重试", "error");
+  }), [findings]);
+  const sourceCounts = useMemo(() => ({
+    rule: findings.filter((f) => f.source === "rule").length,
+    llm: findings.filter((f) => f.source === "llm").length,
+  }), [findings]);
+  const shown = useMemo(() => findings.filter((f) => {
+    const levelMatched = levelFilter === "all" || f.level === levelFilter;
+    const sourceMatched = sourceFilter === "all" || f.source === sourceFilter;
+    return levelMatched && sourceMatched;
+  }), [findings, levelFilter, sourceFilter]);
+  const clauseAnchors = useMemo(() => {
+    if (!doc?.text) return {};
+    const acc: Record<string, DocumentAnchor> = {};
+    for (const item of checklist) {
+      if (
+        item.present &&
+        item.char_start != null &&
+        item.char_end != null &&
+        item.char_start >= 0 &&
+        item.char_end > item.char_start
+      ) {
+        acc[item.clause] = {
+          id: `clause-review:${item.clause}:${item.char_start}:${item.char_end}`,
+          label: item.clause,
+          start: item.char_start,
+          end: item.char_end,
+          tone: "clause",
+        };
+      }
     }
+    if (!task?.rule_config?.checklist) return acc;
+    return task.rule_config.checklist.reduce<Record<string, DocumentAnchor>>((next, item) => {
+      if (!item.enabled) return next;
+      if (next[item.clause]) return next;
+      let best: { keyword: string; start: number } | null = null;
+      for (const raw of item.keywords || []) {
+        const keyword = raw.trim();
+        if (!keyword) continue;
+        const start = doc.text.indexOf(keyword);
+        if (start >= 0 && (!best || start < best.start || (start === best.start && keyword.length > best.keyword.length))) {
+          best = { keyword, start };
+        }
+      }
+      if (best) {
+        next[item.clause] = {
+          id: `clause:${item.clause}:${best.start}:${best.keyword}`,
+          label: item.clause,
+          start: best.start,
+          end: best.start + best.keyword.length,
+          tone: "clause",
+        };
+      }
+      return next;
+    }, acc);
+  }, [checklist, doc?.text, task?.rule_config?.checklist]);
+  const current = shown.find((f) => f.id === selected) || null;
+
+  useEffect(() => {
+    if (shown.length === 0) {
+      if (selected !== null) setSelected(null);
+      setClauseAnchor(null);
+      return;
+    }
+    if (selected === null || !shown.some((finding) => finding.id === selected)) {
+      setSelected(shown[0].id);
+      setClauseAnchor(null);
+    }
+  }, [selected, shown]);
+
+  function clearFilters() {
+    setLevelFilter("all");
+    setSourceFilter("all");
+  }
+
+  function selectFinding(id: number) {
+    setSelected(id);
+    setClauseAnchor(null);
+  }
+
+  function locateClause(anchor: DocumentAnchor) {
+    setClauseAnchor(anchor);
   }
 
   async function handleRerun(rule: RuleConfig, scoring: ScoringConfig) {
@@ -155,7 +238,7 @@ export default function Workspace() {
     const startY = event.clientY;
     const startHeight = docHeight ?? docPanelRef.current?.getBoundingClientRect().height ?? 320;
     const containerHeight = centerRef.current?.clientHeight ?? 640;
-    const maxHeight = Math.max(220, containerHeight - 280);
+    const maxHeight = Math.max(260, containerHeight - 180);
 
     const onMove = (move: globalThis.PointerEvent) => {
       setDocHeight(clamp(startHeight + move.clientY - startY, 220, maxHeight));
@@ -177,24 +260,29 @@ export default function Workspace() {
   }
 
   const centerRows = docHeight
-    ? `${docHeight}px 12px minmax(220px,1fr)`
-    : "minmax(240px,0.54fr) 12px minmax(260px,0.46fr)";
+    ? `${docHeight}px 10px minmax(168px,1fr)`
+    : "minmax(360px,1fr) 10px 188px";
   const rightRows = findingsHeight
-    ? `${findingsHeight}px 12px minmax(260px,1fr)`
-    : "minmax(180px,0.38fr) 12px minmax(260px,1fr)";
+    ? `${findingsHeight}px 10px minmax(220px,1fr)`
+    : "minmax(280px,0.52fr) 10px minmax(220px,0.48fr)";
 
   return (
     <div className="flex h-full flex-col bg-bg">
       <Dashboard
         docName={doc?.name ?? ""}
         stance={stance}
+        templateLabel={templateLabels[stance] ?? stance}
         running={running}
         stage={stage}
         score={score}
         level={level}
         counts={counts}
+        sourceCounts={sourceCounts}
         levelFilter={levelFilter}
         onFilter={setLevelFilter}
+        sourceFilter={sourceFilter}
+        onSourceFilter={setSourceFilter}
+        onClearFilters={clearFilters}
         focusMode={focusMode}
         onToggleFocus={() => setFocusMode((v) => !v)}
         onBack={() => nav("/history")}
@@ -219,7 +307,12 @@ export default function Workspace() {
                 thresholds={task.scoring_config?.thresholds ?? { low: 0, mid: 0 }}
               />
             )}
-            <ClauseChecklist items={checklist} />
+            <ClauseChecklist
+              items={checklist}
+              anchors={clauseAnchors}
+              activeClause={clauseAnchor?.label ?? null}
+              onLocate={locateClause}
+            />
             <ProfileCard profile={profile} />
           </aside>
         )}
@@ -228,7 +321,7 @@ export default function Workspace() {
 
         <main ref={centerRef} className="grid min-h-0 min-w-0" style={{ gridTemplateRows: centerRows }}>
           <section ref={docPanelRef} className="min-h-0 overflow-hidden rounded-card border border-line bg-surface shadow-soft">
-            {doc ? <DocumentView text={doc.text} finding={current} /> : <div className="p-16 text-center text-muted">加载原文</div>}
+            {doc ? <DocumentView text={doc.text} finding={current} anchor={clauseAnchor} /> : <div className="p-16 text-center text-muted">加载原文</div>}
           </section>
           <ResizeHandle direction="y" onPointerDown={startDocResize} />
           <section className="min-h-0 overflow-hidden rounded-card border border-line bg-surface shadow-soft">
@@ -239,15 +332,17 @@ export default function Workspace() {
         {!focusMode && <ResizeHandle direction="x" onPointerDown={(event) => startSideResize("right", event)} />}
 
         {!focusMode && (
-          <aside ref={rightRef} className="grid min-w-0 overflow-hidden rounded-card border border-line bg-surface shadow-soft" style={{ gridTemplateRows: rightRows }}>
-              <div ref={findingsPanelRef} className="min-h-0">
-                <FindingsList findings={shown} selected={selected} running={running} onSelect={setSelected} />
+          <aside ref={rightRef} className="grid min-w-0 overflow-hidden" style={{ gridTemplateRows: rightRows }}>
+              <div ref={findingsPanelRef} className="min-h-0 overflow-hidden rounded-card border border-line-strong bg-surface shadow-soft">
+                <FindingsList findings={shown} selected={selected} running={running} onSelect={selectFinding} />
               </div>
               <ResizeHandle direction="y" onPointerDown={startFindingsResize} />
               {current ? (
-                <FindingDetail finding={current} onPatch={patch} />
+                <div className="h-full min-h-0 overflow-hidden rounded-card border border-line-strong bg-surface shadow-soft">
+                  <FindingDetail finding={current} />
+                </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center px-6 text-center text-sm text-faint">选择一条意见查看详情</div>
+                <div className="flex flex-1 items-center justify-center rounded-card border border-line-strong bg-surface px-6 text-center text-sm text-faint shadow-soft">选择一条意见查看详情</div>
               )}
           </aside>
         )}

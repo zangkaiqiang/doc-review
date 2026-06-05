@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 import json
-from typing import List
+from typing import Any, List
 
 from rapidfuzz import fuzz
 
 from .chunker import Chunk
 from .model_gateway import gateway
 
-STANCE_DESC = {
+DEFAULT_TEMPLATE_DESC = {
     "party_a": "甲方（采购/委托方），意见应倾向保护甲方利益",
     "party_b": "乙方（供应/承接方），意见应倾向保护乙方利益",
     "neutral": "中立法务，仅指出失衡与不合规，不偏向任一方",
@@ -21,7 +21,7 @@ STANCE_DESC = {
 }
 
 SYSTEM = (
-    "你是资深合同审查专家。请基于给定立场审查合同条款，"
+    "你是资深合同审查专家。请基于给定审查模板审查合同条款，"
     "只输出 JSON：{\"findings\":[{\"chunk_seq\":int,\"quote\":\"逐字引用原文\","
     "\"level\":\"high|mid|low\",\"category\":\"类别\",\"title\":\"简短标题\","
     "\"problem\":\"问题说明\",\"basis\":\"依据\",\"suggestion\":\"修改建议\"}]}。"
@@ -29,11 +29,11 @@ SYSTEM = (
 )
 
 
-def run(chunks: List[Chunk], stance: str) -> List[dict]:
+def run(chunks: List[Chunk], template_key: str, template: dict[str, Any] | None = None) -> List[dict]:
     if not gateway.available:
         return []
     numbered = "\n".join(f"[{c.seq}] {c.text}" for c in chunks)
-    user = f"审查立场：{STANCE_DESC.get(stance, stance)}\n\n合同条款（[序号] 文本）：\n{numbered}"
+    user = f"审查模板：{_template_desc(template_key, template)}\n\n合同条款（[序号] 文本）：\n{numbered}"
     raw = gateway.chat_json(SYSTEM, user)
     if not raw:
         return []
@@ -56,6 +56,16 @@ def run(chunks: List[Chunk], stance: str) -> List[dict]:
         }
         findings.append(_relocate(f, chunk, item.get("quote", "")))
     return findings
+
+
+def _template_desc(template_key: str, template: dict[str, Any] | None = None) -> str:
+    label = str((template or {}).get("label") or "").strip()
+    hint = str((template or {}).get("hint") or "").strip()
+    if label and hint:
+        return f"{label}（{hint}）"
+    if label:
+        return label
+    return DEFAULT_TEMPLATE_DESC.get(template_key, template_key)
 
 
 def _relocate(f: dict, chunk, quote: str) -> dict:

@@ -66,10 +66,10 @@ export function RuleDrawer({
           </div>
 
           <div className="flex-1 space-y-6 overflow-y-auto p-5">
-            <RuleTemplateEditor value={rule} onChange={setRule} />
+            <RuleTemplateEditor value={rule} onChange={setRule} compact />
             <div className="border-t border-line pt-5">
               <div className="mb-3 text-sm font-medium text-ink2">评分口径</div>
-              <ScoringEditor value={scoring} onChange={setScoring} />
+              <ScoringEditor value={scoring} onChange={setScoring} compact />
             </div>
           </div>
 

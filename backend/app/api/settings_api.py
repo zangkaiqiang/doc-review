@@ -7,6 +7,7 @@ from sqlmodel import Session
 from ..db import get_session
 from ..models import Setting
 from ..services.model_gateway import gateway
+from ..services.review_templates import default_templates, normalize_templates
 from ..services.rules_engine import default_rule_templates, normalize_rule_templates, resolve_rules_for_stance
 from ..services.scoring_engine import (
     default_scoring_templates,
@@ -33,7 +34,23 @@ def _default_for(key: str) -> dict:
         return default_rule_templates()
     if key == "scoring":
         return default_scoring_templates()
+    if key == "templates":
+        return {"items": default_templates()}
     return {}
+
+
+@router.get("/templates")
+def get_templates(session: Session = Depends(get_session)):
+    s = session.get(Setting, "templates")
+    raw = s.value.get("items") if s and isinstance(s.value, dict) else None
+    return normalize_templates(raw)
+
+
+@router.put("/templates")
+def put_templates(items: list[dict], session: Session = Depends(get_session)):
+    normalized = normalize_templates(items)
+    _upsert(session, "templates", {"items": normalized})
+    return normalized
 
 
 @router.get("/rules/{stance}")

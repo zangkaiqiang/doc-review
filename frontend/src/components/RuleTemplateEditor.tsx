@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { RuleChecklistItem, RuleConfig } from "../types";
 import { cn } from "../lib/cn";
 import { Button } from "./ui/Button";
@@ -29,12 +29,16 @@ export function normalizeRuleConfig(config: RuleConfig): RuleConfig {
 export function RuleTemplateEditor({
   value,
   onChange,
+  onReset,
   compact = false,
 }: {
   value: RuleConfig;
   onChange: (value: RuleConfig) => void;
+  onReset?: () => void;
   compact?: boolean;
 }) {
+  const enabledCount = value.checklist.filter((item) => item.enabled).length;
+
   function updateChecklist(index: number, patch: Partial<RuleChecklistItem>) {
     onChange({
       ...value,
@@ -42,40 +46,82 @@ export function RuleTemplateEditor({
     });
   }
 
+  function setAllChecklist(enabled: boolean) {
+    onChange({
+      ...value,
+      checklist: value.checklist.map((item) => ({ ...item, enabled })),
+    });
+  }
+
   return (
-    <div className={cn("grid gap-5", compact ? "" : "xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]")}>
+    <div className={cn("grid gap-5", compact ? "" : "2xl:grid-cols-[minmax(0,1fr)_300px]")}>
       <div>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="text-sm font-medium text-ink2">标准条款清单</div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange({ ...value, checklist: [...value.checklist, { clause: "", keywords: [], enabled: true }] })}
-          >
-            <Plus size={14} /> 添加条款
-          </Button>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium text-ink2">标准条款清单</div>
+            <div className="mt-1 text-xs text-muted">
+              已启用 {enabledCount}/{value.checklist.length} 条，提交时随任务保存
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setAllChecklist(true)}>
+              全部启用
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setAllChecklist(false)}>
+              全部停用
+            </Button>
+            {onReset ? (
+              <Button variant="ghost" size="sm" onClick={onReset}>
+                <RotateCcw size={14} /> 恢复默认
+              </Button>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onChange({ ...value, checklist: [...value.checklist, { clause: "", keywords: [], enabled: true }] })}
+            >
+              <Plus size={14} /> 添加条款
+            </Button>
+          </div>
         </div>
-        <div className="grid gap-2">
+
+        <div className="overflow-hidden rounded-control border border-line bg-surface">
+          <div
+            className={cn(
+              "hidden border-b border-line bg-panel px-3 py-2 text-xs font-medium text-muted",
+              compact ? "" : "lg:grid lg:grid-cols-[128px_minmax(180px,1fr)_78px_38px] lg:gap-2"
+            )}
+          >
+            <div>条款</div>
+            <div>关键词</div>
+            <div>状态</div>
+            <div className="sr-only">操作</div>
+          </div>
           {value.checklist.map((item, index) => (
             <div
               key={index}
               className={cn(
-                "grid gap-2 rounded-control border border-line bg-panel p-3",
-                compact ? "" : "lg:grid-cols-[120px_minmax(0,1fr)_80px_36px] lg:items-end"
+                "grid gap-2 border-b border-line bg-surface p-3 last:border-b-0",
+                compact ? "" : "lg:grid-cols-[128px_minmax(180px,1fr)_78px_38px] lg:items-center"
               )}
             >
-              <Field label="条款">
+              <Field label="条款" compactLabel={!compact}>
                 <input value={item.clause} onChange={(e) => updateChecklist(index, { clause: e.target.value })} className={inputClass()} />
               </Field>
-              <Field label="关键词">
+              <Field label="关键词" compactLabel={!compact}>
                 <input
                   value={joinWords(item.keywords)}
                   onChange={(e) => updateChecklist(index, { keywords: splitWords(e.target.value) })}
                   className={inputClass()}
                 />
               </Field>
-              <label className="flex h-9 items-center gap-2 text-sm text-muted">
-                <input type="checkbox" checked={item.enabled} onChange={(e) => updateChecklist(index, { enabled: e.target.checked })} />
+              <label className="flex h-9 items-center gap-2 rounded-control border border-line bg-panel px-3 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  checked={item.enabled}
+                  onChange={(e) => updateChecklist(index, { enabled: e.target.checked })}
+                  className="h-4 w-4 accent-brand"
+                />
                 启用
               </label>
               <Button
@@ -91,13 +137,13 @@ export function RuleTemplateEditor({
         </div>
       </div>
 
-      <div className="grid gap-4">
+      <div className={cn("grid gap-4", compact ? "" : "xl:sticky xl:top-6 xl:self-start")}>
         <Field label="模糊措辞">
           <textarea
             value={joinWords(value.vague_words)}
             onChange={(e) => onChange({ ...value, vague_words: splitWords(e.target.value) })}
             rows={compact ? 4 : 7}
-            className="w-full rounded-control border border-line bg-panel p-3 text-sm leading-6 text-ink2 outline-none focus:border-brand/50"
+            className="w-full resize-y rounded-control border border-line bg-panel p-3 text-sm leading-6 text-ink2 outline-none focus:border-brand/50"
           />
         </Field>
         <Field label="单边 / 不利措辞">
@@ -105,7 +151,7 @@ export function RuleTemplateEditor({
             value={joinWords(value.onesided_words)}
             onChange={(e) => onChange({ ...value, onesided_words: splitWords(e.target.value) })}
             rows={compact ? 4 : 7}
-            className="w-full rounded-control border border-line bg-panel p-3 text-sm leading-6 text-ink2 outline-none focus:border-brand/50"
+            className="w-full resize-y rounded-control border border-line bg-panel p-3 text-sm leading-6 text-ink2 outline-none focus:border-brand/50"
           />
         </Field>
       </div>
@@ -113,10 +159,10 @@ export function RuleTemplateEditor({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, compactLabel = false }: { label: string; children: ReactNode; compactLabel?: boolean }) {
   return (
     <label className="grid gap-1.5 text-sm">
-      <span className="text-xs font-medium text-muted">{label}</span>
+      <span className={cn("text-xs font-medium text-muted", compactLabel ? "lg:hidden" : "")}>{label}</span>
       {children}
     </label>
   );

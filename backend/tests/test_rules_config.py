@@ -5,6 +5,8 @@ from app.db import engine
 from app.main import app
 from app.models import ReviewTask
 from app.services.chunker import Chunk
+from app.services import clause_review
+from app.services.model_gateway import gateway
 from app.services.rules_engine import default_rules_for_stance, run
 from app.services.scoring_engine import default_scoring_for_stance, resolve_scoring_for_stance
 
@@ -42,6 +44,17 @@ def test_rules_setting_returns_defaults_and_accepts_updates():
     assert one_stance.json() == cfg["party_b"]
 
 
+def test_review_templates_can_be_updated_dynamically():
+    custom = [
+        {"key": "procurement", "label": "采购合同模板", "hint": "采购风险"},
+        {"key": "nda", "label": "NDA 模板", "hint": "保密审查"},
+    ]
+    updated = client.put("/api/settings/templates", json=custom)
+    assert updated.status_code == 200
+    assert updated.json() == custom
+    assert client.get("/api/settings/templates").json() == custom
+
+
 def test_create_review_persists_per_contract_rule_config_snapshot():
     cfg = {
         "checklist": [{"clause": "交付地点", "keywords": ["交付地点"], "enabled": True}],
@@ -76,6 +89,69 @@ def test_rules_engine_uses_configurable_rules():
     assert "缺失条款：交付地点" in titles
     assert "模糊措辞：马上" in titles
     assert "单边/不利措辞：单方取消" in titles
+
+
+def test_clause_review_can_suppress_keyword_missing_false_positive(monkeypatch):
+    chunks = [Chunk(seq=0, text="乙方应于合同生效后三十日内完成服务。", char_start=0, char_end=18)]
+    cfg = {"checklist": [{"clause": "履行期限", "keywords": ["履行期限"], "enabled": True}]}
+    rule_checklist = [{"clause": "履行期限", "present": False}]
+
+    monkeypatch.setitem(gateway._cfg, "api_key", "test-key")
+    monkeypatch.setattr(
+        gateway,
+        "chat_object",
+        lambda _system, _user: {
+            "clauses": [
+                {
+                    "clause": "履行期限",
+                    "status": "sufficient",
+                    "quote": "合同生效后三十日内完成服务",
+                    "problem": "已通过等价表达约定履行期限。",
+                    "suggestion": "",
+                }
+            ]
+        },
+    )
+
+    checklist, findings, suppress = clause_review.review(chunks, cfg, rule_checklist)
+
+    assert suppress == {"履行期限"}
+    assert findings == []
+    assert checklist[0]["present"] is True
+    assert checklist[0]["status"] == "sufficient"
+    assert checklist[0]["review_source"] == "agent"
+    assert checklist[0]["locate_status"] == "located"
+
+
+def test_clause_review_partial_clause_generates_agent_finding(monkeypatch):
+    chunks = [Chunk(seq=0, text="双方另行协商交付日期。", char_start=0, char_end=11)]
+    cfg = {"checklist": [{"clause": "履行期限", "keywords": ["交付日期"], "enabled": True}]}
+    rule_checklist = [{"clause": "履行期限", "present": True}]
+
+    monkeypatch.setitem(gateway._cfg, "api_key", "test-key")
+    monkeypatch.setattr(
+        gateway,
+        "chat_object",
+        lambda _system, _user: {
+            "clauses": [
+                {
+                    "clause": "履行期限",
+                    "status": "partial",
+                    "quote": "另行协商交付日期",
+                    "problem": "仅约定另行协商，缺少明确期限。",
+                    "suggestion": "建议写明具体交付日期或期限。",
+                }
+            ]
+        },
+    )
+
+    checklist, findings, suppress = clause_review.review(chunks, cfg, rule_checklist)
+
+    assert suppress == {"履行期限"}
+    assert checklist[0]["status"] == "partial"
+    assert findings[0]["source"] == "llm"
+    assert findings[0]["category"] == "条款完整性复核"
+    assert findings[0]["level"] == "mid"
 
 
 def test_redlines_can_be_updated_and_deleted():
@@ -247,5 +323,7 @@ def test_scoring_put_per_stance_persists_and_falls_back():
     assert updated.status_code == 200
     body = updated.json()
     assert body["party_a"]["weights"]["high"] == 30
-    assert body["party_b"]["thresholds"]["low"] == 85  # 未指定立场回落默认
+    assert "party_b" not in body  # 动态模板配置保存时不再强行补回固定模板
     assert client.get("/api/settings/scoring/party_a").json()["weights"]["high"] == 30
+    # 单独请求不存在的模板仍可按内置/通用默认兜底，兼容旧任务。
+    assert client.get("/api/settings/scoring/party_b").json()["thresholds"]["low"] == 85

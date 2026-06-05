@@ -1,9 +1,10 @@
-import { RadioTower } from "lucide-react";
+import { Bot, ListChecks, RadioTower } from "lucide-react";
 import type { Finding } from "../../types";
 import { Badge } from "../../components/ui/Badge";
 import { SeverityDot } from "../../components/ui/SeverityDot";
 import { LEVEL_LABEL } from "../../lib/labels";
 import { cn } from "../../lib/cn";
+import { findingSourceLabel, findingSourceTone } from "../../lib/findingSource";
 
 export function FindingsList(props: {
   findings: Finding[];
@@ -11,16 +12,25 @@ export function FindingsList(props: {
   running: boolean;
   onSelect: (id: number) => void;
 }) {
+  const ruleCount = props.findings.filter((finding) => finding.source === "rule").length;
+  const agentCount = props.findings.filter((finding) => finding.source !== "rule").length;
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-line bg-panel px-3.5 py-3 text-sm font-semibold text-ink">
-        审查意见
-        <span className="font-normal text-faint">{props.findings.length}</span>
-        {props.running && (
-          <span className="ml-auto flex items-center gap-1.5 rounded-full bg-high-soft px-2 py-1 text-[11px] font-medium text-high">
-            <RadioTower size={12} /> 实时
-          </span>
-        )}
+      <div className="border-b border-line bg-panel px-3.5 py-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+          审查意见列表
+          <span className="font-normal text-faint">{props.findings.length}</span>
+          {props.running && (
+            <span className="ml-auto flex items-center gap-1.5 rounded-full bg-high-soft px-2 py-1 text-[11px] font-medium text-high">
+              <RadioTower size={12} /> 实时
+            </span>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <SourceBadge source="rule" count={ruleCount} />
+          <SourceBadge source="llm" count={agentCount} />
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         {props.findings.length === 0 && (
@@ -38,17 +48,15 @@ export function FindingsList(props: {
             <span className="flex min-w-0 items-start gap-2.5">
               <SeverityDot level={finding.level} className="mt-1.5" />
               <span className="min-w-0 flex-1">
-                <span className={cn("block truncate text-[13px] font-medium", finding.status !== "open" ? "text-faint line-through" : "text-ink2")}>
+                <span className="block truncate text-[13px] font-medium text-ink2">
                   {finding.title}
                 </span>
                 <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <Badge tone={findingSourceTone(finding.source)} className="px-2 py-0.5 text-[11px]">
+                    {finding.source === "rule" ? <ListChecks size={11} /> : <Bot size={11} />}
+                    {findingSourceLabel(finding.source)}
+                  </Badge>
                   <Badge tone={finding.level} className="px-2 py-0.5 text-[11px]">{LEVEL_LABEL[finding.level]}</Badge>
-                  <Badge tone="neutral" className="px-2 py-0.5 text-[11px]">{finding.source === "rule" ? "规则" : "模型"}</Badge>
-                  {finding.status !== "open" && (
-                    <Badge tone={finding.status === "accepted" ? "good" : "high"} className="px-2 py-0.5 text-[11px]">
-                      {finding.status === "accepted" ? "已采纳" : "已驳回"}
-                    </Badge>
-                  )}
                 </span>
               </span>
             </span>
@@ -56,5 +64,15 @@ export function FindingsList(props: {
         ))}
       </div>
     </div>
+  );
+}
+
+function SourceBadge({ source, count }: { source: Finding["source"]; count: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-1 text-[11px] font-medium text-muted">
+      {source === "rule" ? <ListChecks size={12} className="text-info" /> : <Bot size={12} className="text-brand" />}
+      {findingSourceLabel(source)}
+      <span className="tabular-nums text-faint">{count}</span>
+    </span>
   );
 }

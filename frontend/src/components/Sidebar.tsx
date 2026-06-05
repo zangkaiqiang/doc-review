@@ -6,7 +6,7 @@ const item = "flex h-9 items-center gap-2.5 rounded-control px-3 text-sm transit
 
 export function Sidebar() {
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface p-3">
+    <aside className="flex w-full shrink-0 flex-col border-b border-line bg-surface p-3 lg:h-full lg:w-60 lg:border-b-0 lg:border-r">
       <div className="mb-5 flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-control bg-brand text-white shadow-sm">
           <FileText size={17} />
@@ -34,12 +34,12 @@ export function Sidebar() {
         </NavLink>
       </div>
 
-      <div className="mt-auto rounded-card border border-line bg-panel p-3">
+      <div className="mt-auto hidden rounded-card border border-line bg-panel p-3 lg:block">
         <div className="flex items-center gap-2 text-xs font-medium text-ink2">
           <ShieldCheck size={15} className="text-good" />
           规则兜底已启用
         </div>
-        <div className="mt-1 text-xs leading-5 text-muted">未配置模型时仍可输出确定性审查意见。</div>
+        <div className="mt-1 text-xs leading-5 text-muted">未命中自定义规则时，将使用默认审查规则补充判断。</div>
       </div>
     </aside>
   );

@@ -62,20 +62,20 @@ export function ReviewAgent({ taskId, currentFinding }: { taskId: number; curren
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
-      <div className="border-b border-line bg-panel px-4 py-3">
+      <div className="border-b border-line bg-panel px-3 py-2">
         <div className="flex items-center gap-2">
-          <Bot size={16} className="text-brand" />
+          <Bot size={15} className="text-brand" />
           <div className="text-sm font-semibold text-ink">对话 Agent</div>
           {modelAvailable === false && <Badge tone="neutral" className="ml-auto">规则兜底</Badge>}
           {modelAvailable === true && <Badge tone="brand" className="ml-auto">模型增强</Badge>}
         </div>
         {currentFinding && (
-          <div className="mt-2 truncate text-xs text-muted">当前上下文：{currentFinding.title}</div>
+          <div className="mt-1 truncate text-xs text-muted">当前上下文：{currentFinding.title}</div>
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="grid gap-3">
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+        <div className="grid gap-2">
           {messages.map((message, index) => (
             <div
               key={index}
@@ -88,7 +88,7 @@ export function ReviewAgent({ taskId, currentFinding }: { taskId: number; curren
               )}
               <div
                 className={cn(
-                  "max-w-[82%] rounded-card px-3 py-2 text-sm leading-6",
+                  "max-w-[86%] rounded-control px-3 py-1.5 text-sm leading-6",
                   message.role === "user" ? "bg-brand text-white" : "border border-line bg-surface text-ink2"
                 )}
               >
@@ -110,14 +110,14 @@ export function ReviewAgent({ taskId, currentFinding }: { taskId: number; curren
         </div>
       </div>
 
-      <div className="border-t border-line bg-surface p-3">
-        <div className="mb-2 flex flex-wrap gap-1.5">
+      <div className="border-t border-line bg-surface p-2">
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
           {PROMPTS.map((prompt) => (
             <button
               key={prompt}
               onClick={() => send(prompt)}
               disabled={sending}
-              className="rounded-full border border-line bg-panel px-2.5 py-1 text-xs text-muted transition-colors hover:bg-line/60 disabled:opacity-50"
+              className="rounded-full border border-line bg-panel px-2.5 py-0.5 text-xs text-muted transition-colors hover:bg-line/60 disabled:opacity-50"
             >
               {prompt}
             </button>
@@ -133,9 +133,9 @@ export function ReviewAgent({ taskId, currentFinding }: { taskId: number; curren
                 send();
               }
             }}
-            rows={2}
+            rows={1}
             placeholder="继续追问、让它解释风险或生成修改建议"
-            className="min-h-10 flex-1 resize-none rounded-control border border-line bg-panel px-3 py-2 text-sm leading-5 text-ink2 outline-none focus:border-brand/50"
+            className="min-h-9 flex-1 resize-none rounded-control border border-line bg-panel px-3 py-2 text-sm leading-5 text-ink2 outline-none focus:border-brand/50"
           />
           <Button size="icon" onClick={() => send()} disabled={!input.trim() || sending} title="发送">
             <Send size={16} />

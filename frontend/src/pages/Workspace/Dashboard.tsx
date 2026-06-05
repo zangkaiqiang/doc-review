@@ -1,34 +1,51 @@
-import { ArrowLeft, LayoutPanelLeft, Maximize2, SlidersHorizontal } from "lucide-react";
-import type { Level } from "../../types";
+import { ArrowLeft, Bot, LayoutPanelLeft, ListChecks, Maximize2, SlidersHorizontal } from "lucide-react";
+import type { Finding, Level } from "../../types";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { SeverityDot } from "../../components/ui/SeverityDot";
 import { cn } from "../../lib/cn";
-import { LEVEL_LABEL, STANCE_LABEL } from "../../lib/labels";
+import { LEVEL_LABEL } from "../../lib/labels";
+import { findingSourceLabel } from "../../lib/findingSource";
 
-const STAGES = ["切分", "要素抽取", "规则校验", "LLM研判", "评分", "完成"];
+type SourceFilter = Finding["source"] | "all";
+
+const STAGES = [
+  { key: "切分", label: "切分" },
+  { key: "要素抽取", label: "要素抽取" },
+  { key: "规则校验", label: "规则扫描" },
+  { key: "LLM研判", label: "智能体审查" },
+  { key: "评分", label: "评分" },
+  { key: "完成", label: "完成" },
+];
 
 export function Dashboard(props: {
   docName: string;
   stance: string;
+  templateLabel?: string;
   running: boolean;
   stage: string;
   score: number | null;
   level: Level | null;
   counts: { high: number; mid: number; low: number };
+  sourceCounts: { rule: number; llm: number };
   levelFilter: Level | "all";
   onFilter: (l: Level | "all") => void;
+  sourceFilter: SourceFilter;
+  onSourceFilter: (source: SourceFilter) => void;
+  onClearFilters: () => void;
   focusMode: boolean;
   onToggleFocus: () => void;
   onBack: () => void;
   version?: number;
   onAdjustRules?: () => void;
 }) {
-  const currentIndex = STAGES.indexOf(props.stage);
+  const currentIndex = STAGES.findIndex((stage) => stage.key === props.stage);
   const total = props.counts.high + props.counts.mid + props.counts.low;
   const progress = props.running
     ? Math.max(8, ((Math.max(currentIndex, 0) + 1) / STAGES.length) * 100)
     : 100;
+  const stageLabel = STAGES.find((stage) => stage.key === props.stage)?.label ?? props.stage;
+  const allFiltersClear = props.levelFilter === "all" && props.sourceFilter === "all";
 
   return (
     <header className="border-b border-line bg-surface">
@@ -39,9 +56,9 @@ export function Dashboard(props: {
         <div className="min-w-0 flex-1">
           <div className="truncate text-base font-semibold text-ink">{props.docName || "审查中"}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            {props.stance && <Badge tone="brand">{STANCE_LABEL[props.stance] ?? props.stance}</Badge>}
+            {props.stance && <Badge tone="brand">{props.templateLabel ?? props.stance}</Badge>}
             {props.running ? (
-              <Badge tone="info">{props.stage || "连接中"}</Badge>
+              <Badge tone="info">{stageLabel || "连接中"}</Badge>
             ) : props.level ? (
               <Badge tone={props.level}>风险 {props.score}/100 · {LEVEL_LABEL[props.level]}</Badge>
             ) : (
@@ -52,10 +69,10 @@ export function Dashboard(props: {
 
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button
-            onClick={() => props.onFilter("all")}
+            onClick={props.onClearFilters}
             className={cn(
               "h-8 rounded-control px-2.5 text-xs font-medium transition-colors",
-              props.levelFilter === "all" ? "bg-brand text-white" : "bg-panel text-muted hover:bg-line/70"
+              allFiltersClear ? "bg-brand text-white" : "bg-panel text-muted hover:bg-line/70"
             )}
           >
             全部 {total}
@@ -71,6 +88,19 @@ export function Dashboard(props: {
             >
               <SeverityDot level={level} className={props.levelFilter === level ? "bg-white" : undefined} />
               {level === "high" ? "高" : level === "mid" ? "中" : "低"} {props.counts[level]}
+            </button>
+          ))}
+          {(["rule", "llm"] as const).map((source) => (
+            <button
+              key={source}
+              onClick={() => props.onSourceFilter(props.sourceFilter === source ? "all" : source)}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-xs font-medium transition-colors",
+                props.sourceFilter === source ? "bg-ink text-white" : "bg-panel text-muted hover:bg-line/70 hover:text-ink2"
+              )}
+            >
+              {source === "rule" ? <ListChecks size={13} /> : <Bot size={13} />}
+              {findingSourceLabel(source)} {props.sourceCounts[source]}
             </button>
           ))}
           {props.onAdjustRules && (
@@ -95,14 +125,14 @@ export function Dashboard(props: {
             <div className="grid grid-cols-6 gap-1 text-center text-[11px] text-faint">
               {STAGES.map((stage, index) => (
                 <span
-                  key={stage}
+                  key={stage.key}
                   className={cn(
                     "truncate",
                     currentIndex === index && "font-medium text-brand",
                     currentIndex > index && "text-good"
                   )}
                 >
-                  {stage}
+                  {stage.label}
                 </span>
               ))}
             </div>

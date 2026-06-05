@@ -16,7 +16,8 @@ from sqlmodel import Session, select
 from ..config import settings
 from ..db import engine
 from ..models import Document, ReviewTask, Finding, Redline, Setting
-from . import chunker, rules_engine, llm_review, scoring_engine
+from . import chunker, rules_engine, llm_review, scoring_engine, clause_review
+from .review_templates import normalize_templates
 
 Publish = Callable[[dict], None]
 
@@ -37,6 +38,7 @@ def execute_review(task_id: int, publish: Publish) -> None:
 
             publish({"type": "start", "stance": task.stance,
                      "document": {"id": doc.id, "name": doc.name, "text": doc.text}})
+            template_context = _resolve_template_context(session, task.stance)
 
             # 优先用任务创建时冻结的红线快照；空则回落实时过滤（兼容迁移前旧任务）。
             if task.redline_snapshot:
@@ -70,13 +72,21 @@ def execute_review(task_id: int, publish: Publish) -> None:
             # ③ 规则校验（确定性意见，逐条流式产出）
             publish({"type": "stage", "stage": "规则校验"})
             rule_findings, checklist = rules_engine.run(chunks, redlines, rules_cfg)
+            checklist, clause_findings, suppress_missing = clause_review.review(chunks, rules_cfg, checklist)
+            if suppress_missing:
+                rule_findings = [
+                    f for f in rule_findings
+                    if not (f.get("category") == "缺失条款" and _missing_clause_name(f) in suppress_missing)
+                ]
             task.checklist = checklist
             for f in rule_findings:
+                _emit(session, task.id, f, all_findings, publish)
+            for f in clause_findings:
                 _emit(session, task.id, f, all_findings, publish)
 
             # ④ LLM 研判（无 key 自动降级为空）
             publish({"type": "stage", "stage": "LLM研判"})
-            for f in llm_review.run(chunks, task.stance):
+            for f in llm_review.run(chunks, task.stance, template_context):
                 _emit(session, task.id, f, all_findings, publish)
 
             # ⑤ 评分
@@ -107,6 +117,13 @@ def _emit(session: Session, task_id: int, f: dict, acc: list, publish: Publish) 
         time.sleep(settings.stream_delay)
 
 
+def _missing_clause_name(f: dict) -> str:
+    title = str(f.get("title") or "")
+    if title.startswith("缺失条款："):
+        return title.removeprefix("缺失条款：")
+    return ""
+
+
 def _extract_profile(text: str) -> dict:
     amount = None
     m = re.search(r"(?:￥|¥|人民币)?\s*([0-9][0-9,]{2,})\s*元?", text)
@@ -122,6 +139,15 @@ def _extract_profile(text: str) -> dict:
 def _get_setting(session: Session, key: str):
     s = session.get(Setting, key)
     return s.value if s else None
+
+
+def _resolve_template_context(session: Session, template_key: str) -> dict | None:
+    setting = _get_setting(session, "templates")
+    raw = setting.get("items") if isinstance(setting, dict) else None
+    for item in normalize_templates(raw):
+        if item.get("key") == template_key:
+            return item
+    return None
 
 
 def _redline_applies(redline: Redline, task: ReviewTask, doc: Document) -> bool:

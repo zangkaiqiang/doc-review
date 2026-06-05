@@ -68,17 +68,16 @@ def normalize_scoring(config: dict | None = None, stance: str | None = None) -> 
 
 
 def normalize_scoring_templates(config: dict | None = None) -> dict:
-    """规范化按立场存储的评分模板。
+    """规范化按审查模板存储的评分口径。
 
     旧版本存单份评分配置，视为四立场共享模板以保持兼容。
     """
     if _looks_like_scoring_config(config):
         return {stance: normalize_scoring(config, stance) for stance in STANCE_KEYS}
     config = config or {}
-    return {
-        stance: normalize_scoring(config.get(stance) if isinstance(config, dict) else None, stance)
-        for stance in STANCE_KEYS
-    }
+    if not isinstance(config, dict) or not config:
+        return default_scoring_templates()
+    return {str(key): normalize_scoring(value if isinstance(value, dict) else None, str(key)) for key, value in config.items()}
 
 
 def resolve_scoring_for_stance(stance: str, config: dict | None = None) -> dict:

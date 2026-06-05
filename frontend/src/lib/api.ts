@@ -1,4 +1,15 @@
-import type { ChatMessage, Redline, ReviewChatResponse, ReviewResult, ReviewListItem, RuleConfig, RuleConfigByStance, ScoringConfig, ScoringConfigByStance } from "../types";
+import type {
+  ChatMessage,
+  Redline,
+  ReviewChatResponse,
+  ReviewResult,
+  ReviewListItem,
+  ReviewTemplate,
+  RuleConfig,
+  RuleConfigByTemplate,
+  ScoringConfig,
+  ScoringConfigByTemplate,
+} from "../types";
 
 export async function uploadDocument(file: File): Promise<{ id: number; name: string; chars: number }> {
   const fd = new FormData();
@@ -62,7 +73,23 @@ export async function updateFinding(
   if (!r.ok) throw new Error("更新意见失败");
 }
 
-export async function getRulesConfig(): Promise<RuleConfigByStance> {
+export async function getReviewTemplates(): Promise<ReviewTemplate[]> {
+  const r = await fetch("/api/settings/templates");
+  if (!r.ok) throw new Error("获取审查模板失败");
+  return r.json();
+}
+
+export async function saveReviewTemplates(templates: ReviewTemplate[]): Promise<ReviewTemplate[]> {
+  const r = await fetch("/api/settings/templates", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(templates),
+  });
+  if (!r.ok) throw new Error("保存审查模板失败");
+  return r.json();
+}
+
+export async function getRulesConfig(): Promise<RuleConfigByTemplate> {
   const r = await fetch("/api/settings/rules");
   if (!r.ok) throw new Error("获取规则配置失败");
   return r.json();
@@ -74,7 +101,7 @@ export async function getRulesConfigForStance(stance: string): Promise<RuleConfi
   return r.json();
 }
 
-export async function saveRulesConfig(config: RuleConfigByStance): Promise<RuleConfigByStance> {
+export async function saveRulesConfig(config: RuleConfigByTemplate): Promise<RuleConfigByTemplate> {
   const r = await fetch("/api/settings/rules", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -84,7 +111,7 @@ export async function saveRulesConfig(config: RuleConfigByStance): Promise<RuleC
   return r.json();
 }
 
-export async function getScoringConfig(): Promise<ScoringConfigByStance> {
+export async function getScoringConfig(): Promise<ScoringConfigByTemplate> {
   const r = await fetch("/api/settings/scoring");
   if (!r.ok) throw new Error("获取评分规则失败");
   return r.json();
@@ -96,7 +123,7 @@ export async function getScoringConfigForStance(stance: string): Promise<Scoring
   return r.json();
 }
 
-export async function saveScoringConfig(config: ScoringConfigByStance): Promise<ScoringConfigByStance> {
+export async function saveScoringConfig(config: ScoringConfigByTemplate): Promise<ScoringConfigByTemplate> {
   const r = await fetch("/api/settings/scoring", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

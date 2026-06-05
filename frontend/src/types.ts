@@ -1,5 +1,11 @@
 export type Level = "high" | "mid" | "low";
 
+export interface ReviewTemplate {
+  key: string;
+  label: string;
+  hint: string;
+}
+
 export interface Finding {
   id: number;
   source: "rule" | "llm";
@@ -20,6 +26,14 @@ export interface Finding {
 export interface ChecklistItem {
   clause: string;
   present: boolean;
+  status?: "sufficient" | "partial" | "missing";
+  review_source?: "rule" | "agent";
+  quote?: string;
+  problem?: string;
+  suggestion?: string;
+  char_start?: number | null;
+  char_end?: number | null;
+  locate_status?: "located" | "uncertain";
 }
 
 export interface ReviewTask {
@@ -65,6 +79,7 @@ export interface RuleConfig {
 }
 
 export type RuleConfigByStance = Record<string, RuleConfig>;
+export type RuleConfigByTemplate = Record<string, RuleConfig>;
 
 export interface ScoringConfig {
   weights: Record<Level, number>;
@@ -73,6 +88,7 @@ export interface ScoringConfig {
 }
 
 export type ScoringConfigByStance = Record<string, ScoringConfig>;
+export type ScoringConfigByTemplate = Record<string, ScoringConfig>;
 
 export interface Redline {
   id: number;
